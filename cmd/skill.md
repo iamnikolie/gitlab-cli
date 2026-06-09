@@ -10,17 +10,16 @@ default, `--json`/`--format` for machines.
 
 ## Setup (one-time per profile)
 
-```bash
-gl config init          # prompts for host (default gitlab.com) + token → ~/.gl/config.yaml
-```
+There is no default profile — every command needs `--config <name>` (or
+`GL_CONFIG`). Without it, commands exit 1 with a hint.
 
-Multiple profiles use subdirectories:
 ```bash
-gl --config work config init
+gl --config work config init                       # host (default gitlab.com) + token → ~/.gl/work/config.yaml
 gl --config work mr list --project group/repo
 ```
-Env alt: `GL_CONFIG=work gl ...`. Token/host env: `GL_TOKEN` (fallback
-`GITLAB_TOKEN`), `GL_HOST` (fallback `GITLAB_HOST`). `--host` overrides ad-hoc.
+Env alt: `GL_CONFIG=work gl mr list --project group/repo`. Token/host env:
+`GL_TOKEN` (fallback `GITLAB_TOKEN`), `GL_HOST` (fallback `GITLAB_HOST`).
+`--host` overrides ad-hoc. (`gl skill` and `gl --help` work without a profile.)
 
 ## Project context
 
@@ -85,7 +84,7 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 ## Global flags
 | Flag | Description |
 |---|---|
-| `--config <name>` | Use `~/.gl/<name>/` profile (env `GL_CONFIG`) |
+| `--config <name>` | **Required.** Use `~/.gl/<name>/` profile (env `GL_CONFIG`); no default profile |
 | `--host <host>` | Override profile host |
 | `--project <path-or-id>` | Project for project-scoped commands |
 | `--format table\|json\|csv\|tsv` | Output format (default rendered) |

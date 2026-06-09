@@ -63,9 +63,10 @@ more boilerplate, diverges from fibery, unnecessary for v1 surface.
 
 ## Auth / config (key feature)
 
-Named profiles, fibery model:
+Named profiles. **No default profile** (revised 2026-06-09, post-implementation):
+every command requires `--config <name>` (or `GL_CONFIG`); without it the command
+exits 1 with a hint. `gl skill` and `gl --help` are the only profile-free commands.
 
-- Default profile → `~/.gl/config.yaml`.
 - Named profile → `~/.gl/<name>/config.yaml`, selected via `--config <name>`
   (env `GL_CONFIG`).
 - File mode 0600; directory mode 0700.
@@ -88,8 +89,9 @@ Resolution:
   `gl config init` or set `GL_TOKEN`.
 
 `gl config init` prompts for host (default `gitlab.com`) and token, writes to the
-selected profile (`~/.gl/config.yaml` or `~/.gl/<name>/config.yaml`). Like fibery,
-`config init` skips auth in `PersistentPreRunE`.
+selected profile (`~/.gl/<name>/config.yaml`). It requires `--config <name>` (so
+it knows which profile to write) but skips token validation in
+`PersistentPreRunE`.
 
 ## Project context
 
@@ -153,7 +155,7 @@ project-scoped command is run without `--project`, it exits 1 with a hint.
 
 | Flag | Description |
 |---|---|
-| `--config <name>` | Use `~/.gl/<name>/` profile (env `GL_CONFIG`) |
+| `--config <name>` | **Required.** Use `~/.gl/<name>/` profile (env `GL_CONFIG`); no default profile |
 | `--host <host>` | Override profile host |
 | `--project <path-or-id>` | Project for project-scoped commands |
 | `--format table\|json\|csv\|tsv` | Output format (default rendered) |

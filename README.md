@@ -24,33 +24,31 @@ make build          # produces ./gl
 
 ## Setup
 
-```bash
-gl config init
-```
-
-Prompts for the GitLab host (default `gitlab.com`) and a personal access token
-(`glpat-...`). Config is saved to `~/.gl/config.yaml` (mode 0600).
-
-Alternatively, use env vars:
-
-```bash
-export GL_TOKEN=glpat-xxxxxxxx        # fallback: GITLAB_TOKEN
-export GL_HOST=gitlab.company.com     # fallback: GITLAB_HOST; default gitlab.com
-```
-
-### Multiple profiles
-
-Each profile gets its own subdirectory under `~/.gl/`:
+There is no default profile — every command requires `--config <name>` (or the
+`GL_CONFIG` env var). Without it, commands exit 1 with a hint. (`gl skill` and
+`gl --help` are the only exceptions.)
 
 ```bash
 gl --config work config init
-gl --config work mr list --project group/repo
 ```
 
-Env alternative: `GL_CONFIG=work gl ...`.
+Prompts for the GitLab host (default `gitlab.com`) and a personal access token
+(`glpat-...`). Config is saved to `~/.gl/work/config.yaml` (mode 0600).
 
-`--host gitlab.company.com` overrides the profile host ad-hoc (highest
-precedence).
+Each profile gets its own subdirectory under `~/.gl/` and is fully isolated
+(its own host + token):
+
+```bash
+gl --config work mr list --project group/repo
+gl --config personal me
+```
+
+Env alternative: `GL_CONFIG=work gl mr list --project group/repo`.
+
+Token/host can also come from the environment (still requires a profile name
+to be selected): `GL_TOKEN` (fallback `GITLAB_TOKEN`), `GL_HOST` (fallback
+`GITLAB_HOST`; default `gitlab.com`). `--host gitlab.company.com` overrides the
+profile host ad-hoc (highest precedence).
 
 ## Project context
 
@@ -104,7 +102,7 @@ any command.
 
 | Flag | Description |
 |---|---|
-| `--config <name>` | Use `~/.gl/<name>/` profile (env `GL_CONFIG`) |
+| `--config <name>` | **Required.** Use `~/.gl/<name>/` profile (env `GL_CONFIG`); no default profile |
 | `--host <host>` | Override profile host |
 | `--project <path-or-id>` | Project for project-scoped commands |
 | `--format table\|json\|csv\|tsv` | Output format (default rendered) |
