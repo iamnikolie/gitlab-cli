@@ -622,6 +622,34 @@ var mrReplyCmd = &cobra.Command{
 	},
 }
 
+var mrNoteDeleteCmd = &cobra.Command{
+	Use:     "note-delete <id|branch> <note-id>...",
+	Aliases: []string{"note-rm"},
+	Short:   "Delete one or more comments by note id (requires --yes)",
+	Args:    cobra.MinimumNArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		if !assumeYes {
+			return fmt.Errorf("deleting comments is destructive — add --yes to confirm")
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		for _, nid := range args[1:] {
+			if _, err := cli.Send(cmd.Context(), "DELETE",
+				"/projects/"+p+"/merge_requests/"+iid+"/notes/"+nid, nil, nil, ""); err != nil {
+				return fmt.Errorf("delete note %s: %w", nid, err)
+			}
+			fmt.Printf("Deleted note %s\n", nid)
+		}
+		return nil
+	},
+}
+
 var mrResolveCmd = &cobra.Command{
 	Use:   "resolve <id|branch> <discussion-id>",
 	Short: "Resolve a discussion thread",
@@ -695,6 +723,6 @@ func init() {
 	mrDiscussionsCmd.Flags().IntVar(&mrDiscLimit, "limit", 50, "max threads")
 	mrDiscussionsCmd.Flags().BoolVar(&mrDiscSystem, "system", false, "include system threads (assigned, labels, milestones)")
 
-	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrDiscussionsCmd, mrReplyCmd, mrResolveCmd, mrUnresolveCmd, mrDiffCmd)
+	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrNoteDeleteCmd, mrDiscussionsCmd, mrReplyCmd, mrResolveCmd, mrUnresolveCmd, mrDiffCmd)
 	rootCmd.AddCommand(mrCmd)
 }

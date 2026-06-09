@@ -57,6 +57,7 @@ or a source branch name (resolved to the open MR for that branch).
 | `gl mr merge <id\|branch>` | `--yes` (required), `--squash`, `--remove-source-branch` |
 | `gl mr approve <id\|branch>` | — |
 | `gl mr note <id\|branch> <text>` | Add a comment; `--thread` makes a resolvable thread + returns `discussion_id` |
+| `gl mr note-delete <id\|branch> <note-id>...` | Delete one or more comments (requires `--yes`) |
 | `gl mr discussions <id\|branch>` | List threads (`discussion_id`, resolvable/resolved, body); `--system` to include system threads |
 | `gl mr reply <id\|branch> <discussion-id> <text>` | Reply into a thread |
 | `gl mr resolve \| unresolve <id\|branch> <discussion-id>` | Resolve / unresolve a thread |
