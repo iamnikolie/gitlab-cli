@@ -120,7 +120,10 @@ project-scoped command is run without `--project`, it exits 1 with a hint.
 | Command | Key flags |
 |---|---|
 Commands taking `<ref>` accept an MR iid or a source branch name (added
-2026-06-09; branch resolved via `?source_branch=`).
+2026-06-09; branch resolved via `?source_branch=`). Long text (descriptions,
+comment bodies) can be read from a file or stdin via `--description-file` /
+`--body-file` (`-` = stdin), mutually exclusive with the inline form — added
+2026-06-09 for agent ergonomics. Also applies to `release create`.
 
 | Command | Key flags |
 |---|---|
@@ -132,7 +135,7 @@ Commands taking `<ref>` accept an MR iid or a source branch name (added
 | `gl mr rebase <ref>` | `--skip-ci` (added 2026-06-09) |
 | `gl mr merge <ref>` | `--yes` (required), `--squash`, `--remove-source-branch` |
 | `gl mr approve <ref>` | — |
-| `gl mr note <ref> <text>` | Add a comment; `--thread` → resolvable thread + `discussion_id` (added 2026-06-09) |
+| `gl mr note <ref> [text]` | Add a comment; `--thread` → resolvable thread + `discussion_id`; `--body-file`/`-` (added 2026-06-09) |
 | `gl mr note-delete <ref> <note-id>...` | Delete comments, requires `--yes` (added 2026-06-09) |
 | `gl mr discussions <ref>` | List threads, `--system` to include system (added 2026-06-09) |
 | `gl mr reply <ref> <discussion-id> <text>` | Reply into a thread (added 2026-06-09) |

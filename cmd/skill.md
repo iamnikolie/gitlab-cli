@@ -49,17 +49,17 @@ or a source branch name (resolved to the open MR for that branch).
 |---|---|
 | `gl mr list` | `--state opened\|merged\|closed\|all`, `--author`, `--label`, `--limit` |
 | `gl mr view <id\|branch>` | `--comments` |
-| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--draft` |
-| `gl mr update <id\|branch>` | `--title`, `--description`, `--state`, `--label`, `--target` |
+| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--description-file`, `--draft` |
+| `gl mr update <id\|branch>` | `--title`, `--description`, `--description-file`, `--state`, `--label`, `--target` |
 | `gl mr close <id\|branch>` | Close |
 | `gl mr reopen <id\|branch>` | Reopen |
 | `gl mr rebase <id\|branch>` | `--skip-ci` |
 | `gl mr merge <id\|branch>` | `--yes` (required), `--squash`, `--remove-source-branch` |
 | `gl mr approve <id\|branch>` | — |
-| `gl mr note <id\|branch> <text>` | Add a comment; `--thread` makes a resolvable thread + returns `discussion_id` |
+| `gl mr note <id\|branch> [text]` | Add a comment; `--thread` makes a resolvable thread + returns `discussion_id`; `--body-file` for long text |
 | `gl mr note-delete <id\|branch> <note-id>...` | Delete one or more comments (requires `--yes`) |
 | `gl mr discussions <id\|branch>` | List threads (`discussion_id`, resolvable/resolved, body); `--system` to include system threads |
-| `gl mr reply <id\|branch> <discussion-id> <text>` | Reply into a thread |
+| `gl mr reply <id\|branch> <discussion-id> [text]` | Reply into a thread; `--body-file` for long text |
 | `gl mr resolve \| unresolve <id\|branch> <discussion-id>` | Resolve / unresolve a thread |
 | `gl mr diff <id\|branch>` | Show changes (unified patch) |
 
@@ -112,6 +112,22 @@ or a source branch name (resolved to the open MR for that branch).
 gl branch delete old-feature --project group/repo --yes
 gl mr merge 42 --project group/repo --yes --squash --remove-source-branch
 ```
+
+## Long text from files / stdin (good for agents)
+
+To avoid shell-quoting long markdown (descriptions, comments), pass it from a
+file or stdin with `-`:
+
+```bash
+gl mr create --project group/repo --source x --target main --title T --description-file desc.md
+gl mr update 42 --project group/repo --description-file desc.md
+gl mr note 42 --project group/repo --body-file review.md
+gl mr reply 42 <discussion-id> --project group/repo --body-file -   # from stdin
+gl release create v1.0 --project group/repo --description-file notes.md
+```
+
+`--description` / inline text and the `*-file` form are mutually exclusive.
+`-` reads stdin. Inline text still works for short strings.
 
 ## Token-efficient output
 

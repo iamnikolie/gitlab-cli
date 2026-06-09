@@ -10,17 +10,18 @@ import (
 )
 
 var (
-	fileRef     string
-	branchRef   string
-	commitRef   string
-	commitLimit int
-	branchLimit int
-	tagLimit    int
-	tagRef      string
-	releaseRef  string
-	releaseName string
-	releaseDesc string
-	listLimit   int
+	fileRef         string
+	branchRef       string
+	commitRef       string
+	commitLimit     int
+	branchLimit     int
+	tagLimit        int
+	tagRef          string
+	releaseRef      string
+	releaseName     string
+	releaseDesc     string
+	releaseDescFile string
+	listLimit       int
 )
 
 var (
@@ -320,6 +321,11 @@ var releaseCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		desc, _, err := descArg(releaseDesc, releaseDescFile)
+		if err != nil {
+			return err
+		}
+		releaseDesc = desc
 		result, err := cli.Send(cmd.Context(), "POST",
 			"/projects/"+p+"/releases", nil, releasePayload(args[0]), "application/json")
 		if err != nil {
@@ -387,6 +393,7 @@ func init() {
 	releaseListCmd.Flags().IntVar(&listLimit, "limit", 50, "max results")
 	releaseCreateCmd.Flags().StringVar(&releaseName, "name", "", "release name")
 	releaseCreateCmd.Flags().StringVar(&releaseDesc, "description", "", "release description")
+	releaseCreateCmd.Flags().StringVar(&releaseDescFile, "description-file", "", "read description from a file (- for stdin)")
 	releaseCreateCmd.Flags().StringVar(&releaseRef, "ref", "", "ref to create the tag from (if it doesn't exist)")
 	releaseCmd.AddCommand(releaseListCmd, releaseViewCmd, releaseCreateCmd)
 

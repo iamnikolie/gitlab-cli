@@ -75,8 +75,8 @@ any command.
 Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl mr list` — `--state opened|merged|closed|all`, `--author`, `--label`, `--limit`.
 - `gl mr view <id|branch>` — `--comments`.
-- `gl mr create` — `--source`, `--target`, `--title`, `--description`, `--draft`.
-- `gl mr update <id|branch>` — `--title`, `--description`, `--state`, `--label`, `--target`.
+- `gl mr create` — `--source`, `--target`, `--title`, `--description`/`--description-file`, `--draft`.
+- `gl mr update <id|branch>` — `--title`, `--description`/`--description-file`, `--state`, `--label`, `--target`.
 - `gl mr close|reopen <id|branch>`.
 - `gl mr rebase <id|branch>` — `--skip-ci`.
 - `gl mr merge <id|branch>` — `--yes` (required), `--squash`, `--remove-source-branch`.
@@ -129,3 +129,6 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
   require `--yes`.
 - List/view output is token-lean: a curated column set by default. Use
   `--fields` to change columns, or `--json` for the full raw object.
+- Long text (MR/release descriptions, comments) can come from a file or stdin:
+  `--description-file <path>` / `--body-file <path>` (use `-` for stdin),
+  avoiding shell-quoting. Mutually exclusive with the inline form.
