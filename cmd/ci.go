@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -14,7 +16,83 @@ var (
 	pipelineStatus string
 	pipelineLimit  int
 	jobListLimit   int
+	jobFollow      bool
+	ciRunRef       string
+	ciRunVars      []string
 )
+
+// jobPollInterval is how often `job trace --follow` re-fetches the log/status.
+var jobPollInterval = 2 * time.Second
+
+// isTerminalJobStatus reports whether a job has stopped progressing on its own.
+func isTerminalJobStatus(s string) bool {
+	switch s {
+	case "success", "failed", "canceled", "skipped", "manual":
+		return true
+	}
+	return false
+}
+
+// pipelineVariables turns ["K=V", ...] into the GitLab pipeline variables shape.
+func pipelineVariables(kvs []string) ([]map[string]string, error) {
+	var out []map[string]string
+	for _, kv := range kvs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			return nil, fmt.Errorf("invalid --var %q: expected KEY=VALUE", kv)
+		}
+		out = append(out, map[string]string{"key": k, "value": v})
+	}
+	return out, nil
+}
+
+// followTrace polls a job's log and status, streaming new output until the job
+// reaches a terminal state. Returns a non-nil error when the job failed.
+func followTrace(cmd *cobra.Command, project, jobID string) error {
+	ctx := cmd.Context()
+	tracePath := "/projects/" + project + "/jobs/" + jobID + "/trace"
+	jobPath := "/projects/" + project + "/jobs/" + jobID
+	printed := 0
+	emit := func() error {
+		trace, err := cli.Get(ctx, tracePath, nil)
+		if err != nil {
+			return err
+		}
+		if len(trace) > printed {
+			os.Stdout.Write(trace[printed:])
+			printed = len(trace)
+		}
+		return nil
+	}
+	for {
+		if err := emit(); err != nil {
+			return err
+		}
+		jobRaw, err := cli.Get(ctx, jobPath, nil)
+		if err != nil {
+			return err
+		}
+		var job struct {
+			Status string `json:"status"`
+		}
+		_ = json.Unmarshal(jobRaw, &job)
+		if isTerminalJobStatus(job.Status) {
+			if err := emit(); err != nil { // catch the tail
+				return err
+			}
+			fmt.Fprintf(stderr, "\n[job %s: %s]\n", jobID, job.Status)
+			if job.Status == "failed" {
+				return fmt.Errorf("job %s failed", jobID)
+			}
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(jobPollInterval):
+		}
+	}
+}
 
 var (
 	pipelineListFields   = []string{"id", "status", "ref", "sha", "source", "created_at", "web_url"}
@@ -116,12 +194,15 @@ var jobListCmd = &cobra.Command{
 
 var jobTraceCmd = &cobra.Command{
 	Use:   "trace <job-id>",
-	Short: "Print a job's log",
+	Short: "Print a job's log (--follow to stream until the job finishes)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := projectRef()
 		if err != nil {
 			return err
+		}
+		if jobFollow {
+			return followTrace(cmd, p, args[0])
 		}
 		result, err := cli.Get(cmd.Context(), "/projects/"+p+"/jobs/"+args[0]+"/trace", nil)
 		if err != nil {
@@ -176,6 +257,35 @@ var ciCmd = &cobra.Command{
 	Short: "CI helpers",
 }
 
+var ciRunCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Create and run a new pipeline on a ref",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		if ciRunRef == "" {
+			return fmt.Errorf("--ref is required (branch/tag to run)")
+		}
+		vars, err := pipelineVariables(ciRunVars)
+		if err != nil {
+			return err
+		}
+		payload := map[string]any{"ref": ciRunRef}
+		if len(vars) > 0 {
+			payload["variables"] = vars
+		}
+		body, _ := json.Marshal(payload)
+		result, err := cli.Send(cmd.Context(), "POST",
+			"/projects/"+p+"/pipeline", nil, body, "application/json")
+		if err != nil {
+			return err
+		}
+		return emitObj(result, pipelineStatusFields)
+	},
+}
+
 var ciLintCmd = &cobra.Command{
 	Use:   "lint [file]",
 	Short: "Lint a .gitlab-ci.yml file (default: file in cwd)",
@@ -208,9 +318,12 @@ func init() {
 	pipelineCmd.AddCommand(pipelineListCmd, pipelineStatusCmd)
 
 	jobListCmd.Flags().IntVar(&jobListLimit, "limit", 50, "max results")
+	jobTraceCmd.Flags().BoolVar(&jobFollow, "follow", false, "stream the log until the job finishes (exit 1 if it fails)")
 	jobCmd.AddCommand(jobListCmd, jobTraceCmd, jobRetryCmd, jobCancelCmd)
 
-	ciCmd.AddCommand(ciLintCmd)
+	ciRunCmd.Flags().StringVar(&ciRunRef, "ref", "", "branch or tag to run the pipeline on")
+	ciRunCmd.Flags().StringArrayVar(&ciRunVars, "var", nil, "pipeline variable KEY=VALUE (repeatable)")
+	ciCmd.AddCommand(ciLintCmd, ciRunCmd)
 
 	rootCmd.AddCommand(pipelineCmd, jobCmd, ciCmd)
 }

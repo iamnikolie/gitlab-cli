@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,6 +26,7 @@ var (
 	mrUpdateState  string
 	mrSquash       bool
 	mrRemoveSource bool
+	mrRebaseSkipCI bool
 )
 
 // Curated default field sets (token-lean). --json shows the full object;
@@ -57,6 +59,59 @@ func stateEvent(state string) string {
 	default:
 		return ""
 	}
+}
+
+// iidString extracts an MR's iid as a string from a decoded object.
+func iidString(m map[string]any) string {
+	switch v := m["iid"].(type) {
+	case json.Number:
+		return v.String()
+	case string:
+		return v
+	case float64:
+		return strconv.FormatInt(int64(v), 10)
+	}
+	return ""
+}
+
+// pickMRIID chooses an iid from a merge_requests array: an opened MR if present,
+// else the first (results are ordered most-recent-first).
+func pickMRIID(data json.RawMessage, ref string) (string, error) {
+	items, err := decodeArray(data)
+	if err != nil {
+		return "", fmt.Errorf("resolve MR for branch %q: %w", ref, err)
+	}
+	if len(items) == 0 {
+		return "", fmt.Errorf("no merge request found for branch %q", ref)
+	}
+	for _, m := range items {
+		if s, _ := m["state"].(string); s == "opened" {
+			if id := iidString(m); id != "" {
+				return id, nil
+			}
+		}
+	}
+	if id := iidString(items[0]); id != "" {
+		return id, nil
+	}
+	return "", fmt.Errorf("resolve MR for branch %q: no iid in response", ref)
+}
+
+// resolveMRIID returns the MR iid for a reference. Numeric refs pass through;
+// anything else is treated as a source branch and looked up via the API.
+func resolveMRIID(cmd *cobra.Command, project, ref string) (string, error) {
+	if isNumeric(ref) {
+		return ref, nil
+	}
+	q := url.Values{}
+	q.Set("source_branch", ref)
+	q.Set("order_by", "updated_at")
+	q.Set("sort", "desc")
+	data, _, err := cli.GetPaginated(cmd.Context(), "/projects/"+project+"/merge_requests", q, 20)
+	if err != nil {
+		return "", err
+	}
+	return pickMRIID(data, ref)
 }
 
 // printMRDiff renders the /diffs array as readable unified patches.
@@ -128,7 +183,7 @@ var mrListCmd = &cobra.Command{
 }
 
 var mrViewCmd = &cobra.Command{
-	Use:   "view <iid>",
+	Use:   "view <id|branch>",
 	Short: "View a merge request",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -136,7 +191,11 @@ var mrViewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		base := "/projects/" + p + "/merge_requests/" + args[0]
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		base := "/projects/" + p + "/merge_requests/" + iid
 		result, err := cli.Get(cmd.Context(), base, nil)
 		if err != nil {
 			return err
@@ -188,11 +247,15 @@ var mrCreateCmd = &cobra.Command{
 }
 
 var mrUpdateCmd = &cobra.Command{
-	Use:   "update <iid>",
+	Use:   "update <id|branch>",
 	Short: "Update a merge request",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
 		if err != nil {
 			return err
 		}
@@ -217,7 +280,7 @@ var mrUpdateCmd = &cobra.Command{
 		}
 		body, _ := json.Marshal(payload)
 		result, err := cli.Send(cmd.Context(), "PUT",
-			"/projects/"+p+"/merge_requests/"+args[0], nil, body, "application/json")
+			"/projects/"+p+"/merge_requests/"+iid, nil, body, "application/json")
 		if err != nil {
 			return err
 		}
@@ -225,8 +288,78 @@ var mrUpdateCmd = &cobra.Command{
 	},
 }
 
+// mrSetState is the shared body for close/reopen.
+func mrSetState(cmd *cobra.Command, ref, event string) error {
+	p, err := projectRef()
+	if err != nil {
+		return err
+	}
+	iid, err := resolveMRIID(cmd, p, ref)
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(map[string]any{"state_event": event})
+	result, err := cli.Send(cmd.Context(), "PUT",
+		"/projects/"+p+"/merge_requests/"+iid, nil, body, "application/json")
+	if err != nil {
+		return err
+	}
+	return emitObj(result, mrViewFields)
+}
+
+var mrCloseCmd = &cobra.Command{
+	Use:   "close <id|branch>",
+	Short: "Close a merge request",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return mrSetState(cmd, args[0], "close")
+	},
+}
+
+var mrReopenCmd = &cobra.Command{
+	Use:   "reopen <id|branch>",
+	Short: "Reopen a merge request",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return mrSetState(cmd, args[0], "reopen")
+	},
+}
+
+var mrRebaseCmd = &cobra.Command{
+	Use:   "rebase <id|branch>",
+	Short: "Rebase the source branch against its target",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		q := url.Values{}
+		if mrRebaseSkipCI {
+			q.Set("skip_ci", "true")
+		}
+		result, err := cli.Send(cmd.Context(), "PUT",
+			"/projects/"+p+"/merge_requests/"+iid+"/rebase", q, nil, "")
+		if err != nil {
+			return err
+		}
+		if outputFormat == "json" || jsonOutput {
+			return writeRaw(result)
+		}
+		if len(strings.TrimSpace(string(result))) == 0 {
+			fmt.Printf("Rebase requested for MR !%s\n", iid)
+			return nil
+		}
+		return emitObj(result, []string{"rebase_in_progress", "merge_error"})
+	},
+}
+
 var mrMergeCmd = &cobra.Command{
-	Use:   "merge <iid>",
+	Use:   "merge <id|branch>",
 	Short: "Merge a merge request (requires --yes)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -237,6 +370,10 @@ var mrMergeCmd = &cobra.Command{
 		if !assumeYes {
 			return fmt.Errorf("merging is destructive — add --yes to confirm")
 		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
 		payload := map[string]any{}
 		if mrSquash {
 			payload["squash"] = true
@@ -246,7 +383,7 @@ var mrMergeCmd = &cobra.Command{
 		}
 		body, _ := json.Marshal(payload)
 		result, err := cli.Send(cmd.Context(), "PUT",
-			"/projects/"+p+"/merge_requests/"+args[0]+"/merge", nil, body, "application/json")
+			"/projects/"+p+"/merge_requests/"+iid+"/merge", nil, body, "application/json")
 		if err != nil {
 			return err
 		}
@@ -255,7 +392,7 @@ var mrMergeCmd = &cobra.Command{
 }
 
 var mrApproveCmd = &cobra.Command{
-	Use:   "approve <iid>",
+	Use:   "approve <id|branch>",
 	Short: "Approve a merge request",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -263,8 +400,12 @@ var mrApproveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
 		result, err := cli.Send(cmd.Context(), "POST",
-			"/projects/"+p+"/merge_requests/"+args[0]+"/approve", nil, nil, "")
+			"/projects/"+p+"/merge_requests/"+iid+"/approve", nil, nil, "")
 		if err != nil {
 			return err
 		}
@@ -273,7 +414,7 @@ var mrApproveCmd = &cobra.Command{
 }
 
 var mrNoteCmd = &cobra.Command{
-	Use:   "note <iid> <text>",
+	Use:   "note <id|branch> <text>",
 	Short: "Add a comment to a merge request",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -281,9 +422,13 @@ var mrNoteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
 		body, _ := json.Marshal(map[string]any{"body": args[1]})
 		result, err := cli.Send(cmd.Context(), "POST",
-			"/projects/"+p+"/merge_requests/"+args[0]+"/notes", nil, body, "application/json")
+			"/projects/"+p+"/merge_requests/"+iid+"/notes", nil, body, "application/json")
 		if err != nil {
 			return err
 		}
@@ -292,7 +437,7 @@ var mrNoteCmd = &cobra.Command{
 }
 
 var mrDiffCmd = &cobra.Command{
-	Use:   "diff <iid>",
+	Use:   "diff <id|branch>",
 	Short: "Show a merge request's changes",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -300,8 +445,12 @@ var mrDiffCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
 		result, err := cli.Get(cmd.Context(),
-			"/projects/"+p+"/merge_requests/"+args[0]+"/diffs", nil)
+			"/projects/"+p+"/merge_requests/"+iid+"/diffs", nil)
 		if err != nil {
 			return err
 		}
@@ -335,6 +484,8 @@ func init() {
 	mrMergeCmd.Flags().BoolVar(&mrSquash, "squash", false, "squash commits on merge")
 	mrMergeCmd.Flags().BoolVar(&mrRemoveSource, "remove-source-branch", false, "remove source branch after merge")
 
-	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrDiffCmd)
+	mrRebaseCmd.Flags().BoolVar(&mrRebaseSkipCI, "skip-ci", false, "skip the CI pipeline triggered by the rebase")
+
+	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrDiffCmd)
 	rootCmd.AddCommand(mrCmd)
 }
