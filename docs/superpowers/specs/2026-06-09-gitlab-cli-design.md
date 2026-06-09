@@ -185,6 +185,14 @@ Port `internal/render` from fibery:
 - `--json` / `--format json`: raw JSON passthrough.
 - `--format csv` / `--format tsv`: tabular export.
 
+Field projection (added 2026-06-09, post-implementation): GitLab REST objects
+carry 50+ fields, so list/view commands project to a **curated default column
+set** before rendering table/csv/tsv. `--fields a,b,author.username` overrides
+the set (dotted paths flatten one level of a nested object); `--json` always
+emits the full raw object. `render` decodes numbers with `UseNumber` (integer
+IDs print verbatim, not `5.9e+06`) and sanitizes table cells (collapse
+newlines, escape `|`). `gl mr diff` prints unified patches, not a table.
+
 ## Skill + docs
 
 - `gl skill` prints embedded `cmd/skill.md`. Frontmatter:

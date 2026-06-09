@@ -106,7 +106,8 @@ any command.
 | `--host <host>` | Override profile host |
 | `--project <path-or-id>` | Project for project-scoped commands |
 | `--format table\|json\|csv\|tsv` | Output format (default rendered) |
-| `--json` | Alias for `--format json` |
+| `--json` | Alias for `--format json` (full raw object) |
+| `--fields a,b,...` | Columns for table/csv/tsv (default: a curated set; dotted paths like `author.username` flatten one level) |
 | `--verbose` | Dump API request/response to stderr |
 | `--yes` | Confirm destructive operations |
 
@@ -118,3 +119,5 @@ any command.
 - Not-found responses exit 1 (not silent success).
 - Destructive commands (`mr merge`, `branch delete`, `tag delete`, `job cancel`)
   require `--yes`.
+- List/view output is token-lean: a curated column set by default. Use
+  `--fields` to change columns, or `--json` for the full raw object.

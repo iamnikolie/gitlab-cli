@@ -55,3 +55,39 @@ func TestTSV(t *testing.T) {
 	assert.Equal(t, "a\tb", lines[0])
 	assert.Equal(t, "x\ty", lines[1])
 }
+
+func TestList_LargeIntNotScientific(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, render.List(&buf, json.RawMessage(`[{"id":5918904}]`)))
+	out := buf.String()
+	assert.Contains(t, out, "| 5918904 |")
+	assert.NotContains(t, out, "e+06")
+}
+
+func TestList_SanitizesPipeAndNewline(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, render.List(&buf, json.RawMessage(`[{"title":"a|b\nc"}]`)))
+	out := buf.String()
+	// One data row only — newline must not split it into two rows.
+	dataRows := 0
+	for _, ln := range strings.Split(strings.TrimSpace(out), "\n") {
+		if strings.HasPrefix(ln, "| ") && !strings.Contains(ln, "---") && !strings.Contains(ln, "title") {
+			dataRows++
+		}
+	}
+	assert.Equal(t, 1, dataRows)
+	assert.Contains(t, out, `a\|b`)   // pipe escaped
+	assert.NotContains(t, out, "a|b") // raw pipe gone
+}
+
+func TestKV_LargeIntNotScientific(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, render.KV(&buf, json.RawMessage(`{"id":5918904}`)))
+	assert.Contains(t, buf.String(), "**id:** 5918904")
+}
+
+func TestList_NestedObjectCompactJSON(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, render.List(&buf, json.RawMessage(`[{"author":{"username":"alice"}}]`)))
+	assert.Contains(t, buf.String(), `{"username":"alice"}`)
+}

@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -15,6 +14,14 @@ var (
 	pipelineStatus string
 	pipelineLimit  int
 	jobListLimit   int
+)
+
+var (
+	pipelineListFields   = []string{"id", "status", "ref", "sha", "source", "created_at", "web_url"}
+	pipelineStatusFields = []string{"id", "status", "ref", "sha", "source", "duration", "created_at", "updated_at", "web_url"}
+	jobListFields        = []string{"id", "name", "status", "stage", "ref", "allow_failure", "web_url"}
+	jobFields            = []string{"id", "name", "status", "stage", "ref", "web_url"}
+	ciLintFields         = []string{"valid", "errors", "warnings"}
 )
 
 // resolveCIFile returns the lint target path; defaults to .gitlab-ci.yml.
@@ -50,10 +57,8 @@ var pipelineListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, pipelineLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, pipelineLimit)
+		return emitList(result, pipelineListFields)
 	},
 }
 
@@ -81,9 +86,7 @@ var pipelineStatusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, pipelineStatusFields)
 	},
 }
 
@@ -106,10 +109,8 @@ var jobListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, jobListLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, jobListLimit)
+		return emitList(result, jobListFields)
 	},
 }
 
@@ -145,9 +146,7 @@ var jobRetryCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, jobFields)
 	},
 }
 
@@ -168,9 +167,7 @@ var jobCancelCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, jobFields)
 	},
 }
 
@@ -199,9 +196,7 @@ var ciLintCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, ciLintFields)
 	},
 }
 
