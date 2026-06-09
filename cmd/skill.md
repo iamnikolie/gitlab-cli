@@ -35,9 +35,11 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 | Command | Description |
 |---|---|
 | `gl config init` | Write host + token to profile |
-| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data` raw JSON body |
+| `gl config show` | Show active profile, host, base URL, token state (masked) |
+| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data` raw JSON body, `--paginate` (GET, all pages) |
 | `gl api graphql -f query=...` | GraphQL escape hatch |
 | `gl me` | Current user |
+| `gl version` | Version (also `gl --version`) |
 | `gl skill` | Print this reference |
 
 ### Merge requests
@@ -49,7 +51,7 @@ or a source branch name (resolved to the open MR for that branch).
 |---|---|
 | `gl mr list` | `--state opened\|merged\|closed\|all`, `--author`, `--label`, `--limit` |
 | `gl mr view <id\|branch>` | `--comments` |
-| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--description-file`, `--draft` |
+| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--description-file`, `--draft`, `--id-only` |
 | `gl mr update <id\|branch>` | `--title`, `--description`, `--description-file`, `--state`, `--label`, `--target` |
 | `gl mr close <id\|branch>` | Close |
 | `gl mr reopen <id\|branch>` | Reopen |
@@ -73,7 +75,7 @@ or a source branch name (resolved to the open MR for that branch).
 | `gl job trace <job-id>` | `--follow` (stream until done; exit 1 if the job fails) |
 | `gl job retry <job-id>` | — |
 | `gl job cancel <job-id>` | `--yes` (required) |
-| `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd) |
+| `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd); **exit 1 if invalid** |
 
 ### Repo & files
 | Command | Key flags |
@@ -128,6 +130,24 @@ gl release create v1.0 --project group/repo --description-file notes.md
 
 `--description` / inline text and the `*-file` form are mutually exclusive.
 `-` reads stdin. Inline text still works for short strings.
+
+## Scripting & exit codes
+
+`--id-only` prints just the new object's id (for piping into the next command):
+
+```bash
+IID=$(gl mr create --project g/r --source x --target main --title T --id-only)
+PID=$(gl ci run --project g/r --ref x --id-only)
+DISC=$(gl mr note 42 --project g/r --thread "Fix this" --id-only)   # discussion_id
+gl mr reply 42 "$DISC" --project g/r "done"
+```
+
+Available on `gl mr create` (iid), `gl ci run` (pipeline id), `gl mr note`
+(note id, or `discussion_id` with `--thread`).
+
+Exit codes: `0` on success; non-zero on API error, not-found, missing
+`--project`/`--yes`, **`ci lint` invalid config**, and `job trace --follow` when
+the job fails. Branch on the exit code — no need to parse output for pass/fail.
 
 ## Token-efficient output
 

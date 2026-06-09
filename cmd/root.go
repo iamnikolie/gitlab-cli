@@ -6,11 +6,32 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"runtime/debug"
 
 	"github.com/langgerone/gitlab-cli/internal/client"
 	"github.com/langgerone/gitlab-cli/internal/config"
 	"github.com/spf13/cobra"
 )
+
+// version is the base CLI version; buildVersion appends the VCS revision.
+const version = "0.1.0"
+
+// buildVersion returns the version plus the embedded git revision when present.
+func buildVersion() string {
+	v := version
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				rev := s.Value
+				if len(rev) > 12 {
+					rev = rev[:12]
+				}
+				v += " (" + rev + ")"
+			}
+		}
+	}
+	return v
+}
 
 var (
 	jsonOutput    bool
@@ -48,8 +69,9 @@ Run 'gl skill' to print the full Claude skill reference (commands, flags, workfl
 		if profile == "" {
 			return fmt.Errorf("--config <name> is required (or set GL_CONFIG); there is no default profile — run 'gl --config <name> config init'")
 		}
-		// config init writes the token: it needs the profile name but no auth.
-		if cmd.Name() == "init" {
+		// config init writes the token and config show inspects it: both need
+		// the profile name but not a validated token / built client.
+		if cmd.Name() == "init" || cmd.Name() == "show" {
 			return nil
 		}
 		var err error
@@ -84,6 +106,18 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "", "output format: table (default), json, csv, tsv")
 	rootCmd.PersistentFlags().BoolVar(&assumeYes, "yes", false, "confirm destructive operations")
 	rootCmd.PersistentFlags().StringSliceVar(&projectFields, "fields", nil, "comma-separated fields for table/csv/tsv (default: a curated set; --json shows everything)")
+
+	rootCmd.Version = buildVersion()
+	rootCmd.AddCommand(versionCmd)
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Show the gl version",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Printf("gl version %s\n", buildVersion())
+		return nil
+	},
 }
 
 // profileExempt reports whether a command runs without a named profile —
@@ -91,7 +125,7 @@ func init() {
 // requires --config (or GL_CONFIG); there is no default profile.
 func profileExempt(name string) bool {
 	switch name {
-	case "gl", "skill", "help", "completion", "bash", "zsh", "fish", "powershell":
+	case "gl", "skill", "help", "completion", "version", "bash", "zsh", "fish", "powershell":
 		return true
 	}
 	return false

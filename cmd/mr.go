@@ -24,6 +24,8 @@ var (
 	mrDescriptionFile string
 	mrDraft           bool
 	mrBodyFile        string
+	mrCreateIDOnly    bool
+	mrNoteIDOnly      bool
 
 	mrUpdateState  string
 	mrSquash       bool
@@ -349,6 +351,9 @@ var mrCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if mrCreateIDOnly {
+			return printIDOnly(result, "iid")
+		}
 		return emitObj(result, mrViewFields)
 	},
 }
@@ -569,6 +574,10 @@ var mrNoteCmd = &cobra.Command{
 			if err := json.Unmarshal(result, &disc); err != nil {
 				return fmt.Errorf("parse discussion: %w", err)
 			}
+			if mrNoteIDOnly {
+				fmt.Println(disc.ID)
+				return nil
+			}
 			row := map[string]any{"discussion_id": disc.ID}
 			if len(disc.Notes) > 0 {
 				row["note_id"] = disc.Notes[0].ID
@@ -582,6 +591,9 @@ var mrNoteCmd = &cobra.Command{
 			"/projects/"+p+"/merge_requests/"+iid+"/notes", nil, body, "application/json")
 		if err != nil {
 			return err
+		}
+		if mrNoteIDOnly {
+			return printIDOnly(result, "id")
 		}
 		return emitObj(result, noteFields)
 	},
@@ -733,6 +745,7 @@ func init() {
 	mrCreateCmd.Flags().StringVar(&mrDescription, "description", "", "MR description")
 	mrCreateCmd.Flags().StringVar(&mrDescriptionFile, "description-file", "", "read description from a file (- for stdin)")
 	mrCreateCmd.Flags().BoolVar(&mrDraft, "draft", false, "mark as draft")
+	mrCreateCmd.Flags().BoolVar(&mrCreateIDOnly, "id-only", false, "print only the new MR iid")
 
 	mrUpdateCmd.Flags().StringVar(&mrTitle, "title", "", "new title")
 	mrUpdateCmd.Flags().StringVar(&mrDescription, "description", "", "new description")
@@ -742,6 +755,7 @@ func init() {
 	mrUpdateCmd.Flags().StringVar(&mrTarget, "target", "", "new target branch")
 
 	mrNoteCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read comment text from a file (- for stdin)")
+	mrNoteCmd.Flags().BoolVar(&mrNoteIDOnly, "id-only", false, "print only the new note id (or discussion_id with --thread)")
 	mrReplyCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read reply text from a file (- for stdin)")
 
 	mrMergeCmd.Flags().BoolVar(&mrSquash, "squash", false, "squash commits on merge")

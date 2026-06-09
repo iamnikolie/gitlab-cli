@@ -19,6 +19,7 @@ var (
 	jobFollow      bool
 	ciRunRef       string
 	ciRunVars      []string
+	ciRunIDOnly    bool
 )
 
 // jobPollInterval is how often `job trace --follow` re-fetches the log/status.
@@ -282,6 +283,9 @@ var ciRunCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		if ciRunIDOnly {
+			return printIDOnly(result, "id")
+		}
 		return emitObj(result, pipelineStatusFields)
 	},
 }
@@ -306,7 +310,17 @@ var ciLintCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return emitObj(result, ciLintFields)
+		if err := emitObj(result, ciLintFields); err != nil {
+			return err
+		}
+		// Exit non-zero when the config is invalid so agents catch it by code.
+		var lint struct {
+			Valid bool `json:"valid"`
+		}
+		if json.Unmarshal(result, &lint) == nil && !lint.Valid {
+			return fmt.Errorf("CI configuration is invalid")
+		}
+		return nil
 	},
 }
 
@@ -323,6 +337,7 @@ func init() {
 
 	ciRunCmd.Flags().StringVar(&ciRunRef, "ref", "", "branch or tag to run the pipeline on")
 	ciRunCmd.Flags().StringArrayVar(&ciRunVars, "var", nil, "pipeline variable KEY=VALUE (repeatable)")
+	ciRunCmd.Flags().BoolVar(&ciRunIDOnly, "id-only", false, "print only the new pipeline id")
 	ciCmd.AddCommand(ciLintCmd, ciRunCmd)
 
 	rootCmd.AddCommand(pipelineCmd, jobCmd, ciCmd)
