@@ -81,7 +81,10 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl mr rebase <id|branch>` — `--skip-ci`.
 - `gl mr merge <id|branch>` — `--yes` (required), `--squash`, `--remove-source-branch`.
 - `gl mr approve <id|branch>`.
-- `gl mr note <id|branch> <text>`.
+- `gl mr note <id|branch> <text>` — `--thread` creates a resolvable thread and returns its `discussion_id`.
+- `gl mr discussions <id|branch>` — list threads (`discussion_id`, resolvable/resolved, body); `--system` includes system threads.
+- `gl mr reply <id|branch> <discussion-id> <text>` — reply into a thread.
+- `gl mr resolve | unresolve <id|branch> <discussion-id>` — resolve/unresolve a thread.
 - `gl mr diff <id|branch>` — unified patch.
 
 ### Pipelines & CI

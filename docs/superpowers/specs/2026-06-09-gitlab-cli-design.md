@@ -132,7 +132,10 @@ Commands taking `<ref>` accept an MR iid or a source branch name (added
 | `gl mr rebase <ref>` | `--skip-ci` (added 2026-06-09) |
 | `gl mr merge <ref>` | `--yes` (required), `--squash`, `--remove-source-branch` |
 | `gl mr approve <ref>` | — |
-| `gl mr note <ref> <text>` | Add a comment |
+| `gl mr note <ref> <text>` | Add a comment; `--thread` → resolvable thread + `discussion_id` (added 2026-06-09) |
+| `gl mr discussions <ref>` | List threads, `--system` to include system (added 2026-06-09) |
+| `gl mr reply <ref> <discussion-id> <text>` | Reply into a thread (added 2026-06-09) |
+| `gl mr resolve \| unresolve <ref> <discussion-id>` | Resolve/unresolve a thread (added 2026-06-09) |
 | `gl mr diff <ref>` | Show changes (unified patch) |
 
 ### Pipelines & CI
