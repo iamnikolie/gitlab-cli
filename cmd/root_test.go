@@ -48,6 +48,15 @@ func TestPaginationHint_BelowLimit(t *testing.T) {
 	assert.Empty(t, buf.String())
 }
 
+func TestProfileExempt(t *testing.T) {
+	for _, n := range []string{"gl", "skill", "help", "completion", "bash", "zsh", "fish", "powershell"} {
+		assert.True(t, profileExempt(n), "exempt: %s", n)
+	}
+	for _, n := range []string{"me", "init", "list", "view", "mr", "api"} {
+		assert.False(t, profileExempt(n), "not exempt: %s", n)
+	}
+}
+
 func TestIsNumeric(t *testing.T) {
 	assert.True(t, isNumeric("12345"))
 	assert.False(t, isNumeric("group/repo"))

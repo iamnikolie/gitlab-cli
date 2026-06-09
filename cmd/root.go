@@ -37,9 +37,17 @@ Run 'gl skill' to print the full Claude skill reference (commands, flags, workfl
 	// and error messages already carry recovery hints.
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// config init and skill don't need auth: init writes the token,
-		// skill prints a static doc agents read before configuring.
-		if cmd.Name() == "init" || cmd.Name() == "skill" {
+		// Meta commands need neither a profile nor auth (skill prints a
+		// static doc; help/completion/root just print text).
+		if profileExempt(cmd.Name()) {
+			return nil
+		}
+		// Every real command requires a named profile — there is no default.
+		if profile == "" {
+			return fmt.Errorf("--config <name> is required (or set GL_CONFIG); there is no default profile — run 'gl --config <name> config init'")
+		}
+		// config init writes the token: it needs the profile name but no auth.
+		if cmd.Name() == "init" {
 			return nil
 		}
 		var err error
@@ -73,6 +81,17 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "dump API request/response to stderr")
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "", "output format: table (default), json, csv, tsv")
 	rootCmd.PersistentFlags().BoolVar(&assumeYes, "yes", false, "confirm destructive operations")
+}
+
+// profileExempt reports whether a command runs without a named profile —
+// meta commands that touch neither config nor the API. Everything else
+// requires --config (or GL_CONFIG); there is no default profile.
+func profileExempt(name string) bool {
+	switch name {
+	case "gl", "skill", "help", "completion", "bash", "zsh", "fish", "powershell":
+		return true
+	}
+	return false
 }
 
 // isNumeric reports whether s is a non-empty run of ASCII digits.

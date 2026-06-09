@@ -35,11 +35,7 @@ var configInitCmd = &cobra.Command{
 		if err := config.Save(host, tok, profile); err != nil {
 			return err
 		}
-		if profile == "" {
-			fmt.Println("Saved to ~/.gl/config.yaml")
-		} else {
-			fmt.Printf("Saved to ~/.gl/%s/config.yaml\n", profile)
-		}
+		fmt.Printf("Saved to ~/.gl/%s/config.yaml\n", profile)
 		return nil
 	},
 }
