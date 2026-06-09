@@ -17,11 +17,13 @@ var (
 	mrLimit    int
 	mrComments bool
 
-	mrSource      string
-	mrTarget      string
-	mrTitle       string
-	mrDescription string
-	mrDraft       bool
+	mrSource          string
+	mrTarget          string
+	mrTitle           string
+	mrDescription     string
+	mrDescriptionFile string
+	mrDraft           bool
+	mrBodyFile        string
 
 	mrUpdateState  string
 	mrSquash       bool
@@ -329,13 +331,17 @@ var mrCreateCmd = &cobra.Command{
 		if mrSource == "" || mrTarget == "" || mrTitle == "" {
 			return fmt.Errorf("--source, --target and --title are required")
 		}
+		desc, hasDesc, err := descArg(mrDescription, mrDescriptionFile)
+		if err != nil {
+			return err
+		}
 		payload := map[string]any{
 			"source_branch": mrSource,
 			"target_branch": mrTarget,
 			"title":         draftTitle(mrTitle, mrDraft),
 		}
-		if mrDescription != "" {
-			payload["description"] = mrDescription
+		if hasDesc {
+			payload["description"] = desc
 		}
 		body, _ := json.Marshal(payload)
 		result, err := cli.Send(cmd.Context(), "POST",
@@ -360,12 +366,16 @@ var mrUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+		desc, hasDesc, err := descArg(mrDescription, mrDescriptionFile)
+		if err != nil {
+			return err
+		}
 		payload := map[string]any{}
 		if mrTitle != "" {
 			payload["title"] = mrTitle
 		}
-		if mrDescription != "" {
-			payload["description"] = mrDescription
+		if hasDesc {
+			payload["description"] = desc
 		}
 		if mrLabel != "" {
 			payload["labels"] = mrLabel
@@ -515,9 +525,9 @@ var mrApproveCmd = &cobra.Command{
 }
 
 var mrNoteCmd = &cobra.Command{
-	Use:   "note <id|branch> <text>",
-	Short: "Add a comment to a merge request (--thread for a resolvable thread)",
-	Args:  cobra.ExactArgs(2),
+	Use:   "note <id|branch> [text]",
+	Short: "Add a comment to a merge request (--thread for a resolvable thread; --body-file for long text)",
+	Args:  cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := projectRef()
 		if err != nil {
@@ -527,7 +537,15 @@ var mrNoteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		body, _ := json.Marshal(map[string]any{"body": args[1]})
+		inline := ""
+		if len(args) == 2 {
+			inline = args[1]
+		}
+		text, err := textFromArgOrFile(inline, len(args) == 2, mrBodyFile)
+		if err != nil {
+			return err
+		}
+		body, _ := json.Marshal(map[string]any{"body": text})
 		if mrNoteThread {
 			result, err := cli.Send(cmd.Context(), "POST",
 				"/projects/"+p+"/merge_requests/"+iid+"/discussions", nil, body, "application/json")
@@ -600,9 +618,9 @@ var mrDiscussionsCmd = &cobra.Command{
 }
 
 var mrReplyCmd = &cobra.Command{
-	Use:   "reply <id|branch> <discussion-id> <text>",
-	Short: "Reply into a discussion thread",
-	Args:  cobra.ExactArgs(3),
+	Use:   "reply <id|branch> <discussion-id> [text]",
+	Short: "Reply into a discussion thread (--body-file for long text)",
+	Args:  cobra.RangeArgs(2, 3),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := projectRef()
 		if err != nil {
@@ -612,7 +630,15 @@ var mrReplyCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		body, _ := json.Marshal(map[string]any{"body": args[2]})
+		inline := ""
+		if len(args) == 3 {
+			inline = args[2]
+		}
+		text, err := textFromArgOrFile(inline, len(args) == 3, mrBodyFile)
+		if err != nil {
+			return err
+		}
+		body, _ := json.Marshal(map[string]any{"body": text})
 		result, err := cli.Send(cmd.Context(), "POST",
 			"/projects/"+p+"/merge_requests/"+iid+"/discussions/"+args[1]+"/notes", nil, body, "application/json")
 		if err != nil {
@@ -705,13 +731,18 @@ func init() {
 	mrCreateCmd.Flags().StringVar(&mrTarget, "target", "", "target branch")
 	mrCreateCmd.Flags().StringVar(&mrTitle, "title", "", "MR title")
 	mrCreateCmd.Flags().StringVar(&mrDescription, "description", "", "MR description")
+	mrCreateCmd.Flags().StringVar(&mrDescriptionFile, "description-file", "", "read description from a file (- for stdin)")
 	mrCreateCmd.Flags().BoolVar(&mrDraft, "draft", false, "mark as draft")
 
 	mrUpdateCmd.Flags().StringVar(&mrTitle, "title", "", "new title")
 	mrUpdateCmd.Flags().StringVar(&mrDescription, "description", "", "new description")
+	mrUpdateCmd.Flags().StringVar(&mrDescriptionFile, "description-file", "", "read description from a file (- for stdin)")
 	mrUpdateCmd.Flags().StringVar(&mrUpdateState, "state", "", "opened (reopen) | closed (close)")
 	mrUpdateCmd.Flags().StringVar(&mrLabel, "label", "", "set label(s), comma-separated")
 	mrUpdateCmd.Flags().StringVar(&mrTarget, "target", "", "new target branch")
+
+	mrNoteCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read comment text from a file (- for stdin)")
+	mrReplyCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read reply text from a file (- for stdin)")
 
 	mrMergeCmd.Flags().BoolVar(&mrSquash, "squash", false, "squash commits on merge")
 	mrMergeCmd.Flags().BoolVar(&mrRemoveSource, "remove-source-branch", false, "remove source branch after merge")
