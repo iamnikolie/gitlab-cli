@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,4 +40,33 @@ func TestPickMRIID_NoneFound(t *testing.T) {
 	_, err := pickMRIID([]byte(`[]`), "ghost")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ghost")
+}
+
+func TestFlattenDiscussions_SkipsSystemByDefault(t *testing.T) {
+	data := []byte(`[
+		{"id":"sys1","notes":[{"body":"assigned to @x","system":true}]},
+		{"id":"abc","notes":[
+			{"body":"please fix","system":false,"resolvable":true,"resolved":false,"author":{"username":"alice"}},
+			{"body":"done","system":false}
+		]}
+	]`)
+	out, err := flattenDiscussions(data, false)
+	require.NoError(t, err)
+	rows, err := decodeArray(out)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "abc", rows[0]["discussion_id"])
+	assert.Equal(t, "alice", rows[0]["author"])
+	assert.Equal(t, "please fix", rows[0]["body"])
+	assert.Equal(t, true, rows[0]["resolvable"])
+	assert.Equal(t, json.Number("2"), rows[0]["notes"])
+}
+
+func TestFlattenDiscussions_IncludeSystem(t *testing.T) {
+	data := []byte(`[{"id":"sys1","notes":[{"body":"assigned","system":true}]}]`)
+	out, err := flattenDiscussions(data, true)
+	require.NoError(t, err)
+	rows, err := decodeArray(out)
+	require.NoError(t, err)
+	assert.Len(t, rows, 1)
 }

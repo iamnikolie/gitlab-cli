@@ -56,7 +56,10 @@ or a source branch name (resolved to the open MR for that branch).
 | `gl mr rebase <id\|branch>` | `--skip-ci` |
 | `gl mr merge <id\|branch>` | `--yes` (required), `--squash`, `--remove-source-branch` |
 | `gl mr approve <id\|branch>` | — |
-| `gl mr note <id\|branch> <text>` | Add a comment |
+| `gl mr note <id\|branch> <text>` | Add a comment; `--thread` makes a resolvable thread + returns `discussion_id` |
+| `gl mr discussions <id\|branch>` | List threads (`discussion_id`, resolvable/resolved, body); `--system` to include system threads |
+| `gl mr reply <id\|branch> <discussion-id> <text>` | Reply into a thread |
+| `gl mr resolve \| unresolve <id\|branch> <discussion-id>` | Resolve / unresolve a thread |
 | `gl mr diff <id\|branch>` | Show changes (unified patch) |
 
 ### Pipelines & CI
@@ -141,6 +144,14 @@ List commands print a stderr note when results hit `--limit`:
 gl mr list --project group/repo --state opened
 gl mr view 42 --project group/repo --comments
 gl mr diff 42 --project group/repo
+```
+
+**Work review threads:**
+```bash
+gl mr discussions 42 --project group/repo                 # list threads + discussion_id
+gl mr note 42 --project group/repo --thread "Please fix"  # resolvable thread, returns discussion_id
+gl mr reply 42 <discussion-id> "Done" --project group/repo
+gl mr resolve 42 <discussion-id> --project group/repo
 ```
 
 **Open and merge an MR:**

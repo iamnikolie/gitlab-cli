@@ -27,6 +27,9 @@ var (
 	mrSquash       bool
 	mrRemoveSource bool
 	mrRebaseSkipCI bool
+	mrNoteThread   bool
+	mrDiscLimit    int
+	mrDiscSystem   bool
 )
 
 // Curated default field sets (token-lean). --json shows the full object;
@@ -36,6 +39,7 @@ var (
 	mrViewFields     = []string{"iid", "state", "draft", "title", "author.username", "source_branch", "target_branch", "merge_status", "has_conflicts", "description", "web_url"}
 	mrApprovalFields = []string{"iid", "approvals_required", "approvals_left", "user_has_approved", "approved"}
 	noteFields       = []string{"id", "author.username", "created_at", "system", "body"}
+	discussionFields = []string{"discussion_id", "resolvable", "resolved", "notes", "author", "body"}
 )
 
 // draftTitle prefixes "Draft: " when draft is set and not already prefixed.
@@ -147,6 +151,103 @@ func printMRDiff(data json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// flattenDiscussions turns the /discussions array into token-lean rows — one
+// per thread, summarizing its head note. System threads (assigned, labels,
+// milestones) are skipped unless includeSystem is set.
+func flattenDiscussions(data json.RawMessage, includeSystem bool) (json.RawMessage, error) {
+	var discs []struct {
+		ID    string `json:"id"`
+		Notes []struct {
+			Body       string `json:"body"`
+			System     bool   `json:"system"`
+			Resolvable bool   `json:"resolvable"`
+			Resolved   bool   `json:"resolved"`
+			Author     struct {
+				Username string `json:"username"`
+			} `json:"author"`
+		} `json:"notes"`
+	}
+	if err := json.Unmarshal(data, &discs); err != nil {
+		return nil, fmt.Errorf("mr discussions: %w", err)
+	}
+	rows := []map[string]any{}
+	for _, d := range discs {
+		if len(d.Notes) == 0 {
+			continue
+		}
+		head := d.Notes[0]
+		if head.System && !includeSystem {
+			continue
+		}
+		rows = append(rows, map[string]any{
+			"discussion_id": d.ID,
+			"author":        head.Author.Username,
+			"resolvable":    head.Resolvable,
+			"resolved":      head.Resolved,
+			"notes":         len(d.Notes),
+			"body":          head.Body,
+		})
+	}
+	b, err := json.Marshal(rows)
+	if err != nil {
+		return nil, fmt.Errorf("mr discussions: %w", err)
+	}
+	return b, nil
+}
+
+// printDiscussionResolved prints the resolved state from a discussion response.
+func printDiscussionResolved(data json.RawMessage, discID string) error {
+	var disc struct {
+		ID    string `json:"id"`
+		Notes []struct {
+			Resolved   bool `json:"resolved"`
+			ResolvedBy struct {
+				Username string `json:"username"`
+			} `json:"resolved_by"`
+		} `json:"notes"`
+	}
+	if err := json.Unmarshal(data, &disc); err != nil {
+		return fmt.Errorf("parse discussion: %w", err)
+	}
+	id := disc.ID
+	if id == "" {
+		id = discID
+	}
+	resolved, by := false, ""
+	if len(disc.Notes) > 0 {
+		resolved = disc.Notes[0].Resolved
+		by = disc.Notes[0].ResolvedBy.Username
+	}
+	if by != "" {
+		fmt.Printf("discussion %s — resolved=%v by %s\n", id, resolved, by)
+	} else {
+		fmt.Printf("discussion %s — resolved=%v\n", id, resolved)
+	}
+	return nil
+}
+
+// mrSetResolved resolves or unresolves a discussion thread.
+func mrSetResolved(cmd *cobra.Command, ref, discID string, resolved bool) error {
+	p, err := projectRef()
+	if err != nil {
+		return err
+	}
+	iid, err := resolveMRIID(cmd, p, ref)
+	if err != nil {
+		return err
+	}
+	body, _ := json.Marshal(map[string]any{"resolved": resolved})
+	result, err := cli.Send(cmd.Context(), "PUT",
+		"/projects/"+p+"/merge_requests/"+iid+"/discussions/"+discID, nil, body, "application/json")
+	if err != nil {
+		return err
+	}
+	if outputFormat == "json" || jsonOutput {
+		return writeRaw(result)
+	}
+	return printDiscussionResolved(result, discID)
 }
 
 var mrCmd = &cobra.Command{
@@ -415,7 +516,7 @@ var mrApproveCmd = &cobra.Command{
 
 var mrNoteCmd = &cobra.Command{
 	Use:   "note <id|branch> <text>",
-	Short: "Add a comment to a merge request",
+	Short: "Add a comment to a merge request (--thread for a resolvable thread)",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		p, err := projectRef()
@@ -427,12 +528,115 @@ var mrNoteCmd = &cobra.Command{
 			return err
 		}
 		body, _ := json.Marshal(map[string]any{"body": args[1]})
+		if mrNoteThread {
+			result, err := cli.Send(cmd.Context(), "POST",
+				"/projects/"+p+"/merge_requests/"+iid+"/discussions", nil, body, "application/json")
+			if err != nil {
+				return err
+			}
+			if outputFormat == "json" || jsonOutput {
+				return writeRaw(result)
+			}
+			// Surface the discussion_id so it can be replied to / resolved.
+			var disc struct {
+				ID    string `json:"id"`
+				Notes []struct {
+					ID     int64  `json:"id"`
+					Body   string `json:"body"`
+					Author struct {
+						Username string `json:"username"`
+					} `json:"author"`
+				} `json:"notes"`
+			}
+			if err := json.Unmarshal(result, &disc); err != nil {
+				return fmt.Errorf("parse discussion: %w", err)
+			}
+			row := map[string]any{"discussion_id": disc.ID}
+			if len(disc.Notes) > 0 {
+				row["note_id"] = disc.Notes[0].ID
+				row["author"] = disc.Notes[0].Author.Username
+				row["body"] = disc.Notes[0].Body
+			}
+			b, _ := json.Marshal(row)
+			return emitObj(b, []string{"discussion_id", "note_id", "author", "body"})
+		}
 		result, err := cli.Send(cmd.Context(), "POST",
 			"/projects/"+p+"/merge_requests/"+iid+"/notes", nil, body, "application/json")
 		if err != nil {
 			return err
 		}
 		return emitObj(result, noteFields)
+	},
+}
+
+var mrDiscussionsCmd = &cobra.Command{
+	Use:   "discussions <id|branch>",
+	Short: "List discussion threads (with discussion_id, resolvable/resolved, body)",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		data, hitLimit, err := cli.GetPaginated(cmd.Context(),
+			"/projects/"+p+"/merge_requests/"+iid+"/discussions", nil, mrDiscLimit)
+		if err != nil {
+			return err
+		}
+		paginationHint(stderr, hitLimit, mrDiscLimit)
+		if outputFormat == "json" || jsonOutput {
+			return writeRaw(data)
+		}
+		flat, err := flattenDiscussions(data, mrDiscSystem)
+		if err != nil {
+			return err
+		}
+		return renderTable(flat, discussionFields)
+	},
+}
+
+var mrReplyCmd = &cobra.Command{
+	Use:   "reply <id|branch> <discussion-id> <text>",
+	Short: "Reply into a discussion thread",
+	Args:  cobra.ExactArgs(3),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		body, _ := json.Marshal(map[string]any{"body": args[2]})
+		result, err := cli.Send(cmd.Context(), "POST",
+			"/projects/"+p+"/merge_requests/"+iid+"/discussions/"+args[1]+"/notes", nil, body, "application/json")
+		if err != nil {
+			return err
+		}
+		return emitObj(result, noteFields)
+	},
+}
+
+var mrResolveCmd = &cobra.Command{
+	Use:   "resolve <id|branch> <discussion-id>",
+	Short: "Resolve a discussion thread",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return mrSetResolved(cmd, args[0], args[1], true)
+	},
+}
+
+var mrUnresolveCmd = &cobra.Command{
+	Use:   "unresolve <id|branch> <discussion-id>",
+	Short: "Unresolve a discussion thread",
+	Args:  cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return mrSetResolved(cmd, args[0], args[1], false)
 	},
 }
 
@@ -486,6 +690,11 @@ func init() {
 
 	mrRebaseCmd.Flags().BoolVar(&mrRebaseSkipCI, "skip-ci", false, "skip the CI pipeline triggered by the rebase")
 
-	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrDiffCmd)
+	mrNoteCmd.Flags().BoolVar(&mrNoteThread, "thread", false, "create a resolvable thread (returns discussion_id) instead of a flat comment")
+
+	mrDiscussionsCmd.Flags().IntVar(&mrDiscLimit, "limit", 50, "max threads")
+	mrDiscussionsCmd.Flags().BoolVar(&mrDiscSystem, "system", false, "include system threads (assigned, labels, milestones)")
+
+	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrDiscussionsCmd, mrReplyCmd, mrResolveCmd, mrUnresolveCmd, mrDiffCmd)
 	rootCmd.AddCommand(mrCmd)
 }

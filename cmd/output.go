@@ -103,12 +103,9 @@ func writeRaw(data json.RawMessage) error {
 	return nil
 }
 
-// emitList renders a JSON array. --json/--format json emits the full raw array;
-// table/csv/tsv project to the active field set (curated default or --fields).
-func emitList(data json.RawMessage, defaults []string) error {
-	if outputFormat == "json" || jsonOutput {
-		return writeRaw(data)
-	}
+// renderTable projects a JSON array to the active field set and renders it as
+// table (default), csv, or tsv. Callers handle the --json path themselves.
+func renderTable(data json.RawMessage, defaults []string) error {
 	projected := projectList(data, activeFields(defaults))
 	switch outputFormat {
 	case "csv":
@@ -118,6 +115,15 @@ func emitList(data json.RawMessage, defaults []string) error {
 	default:
 		return render.List(os.Stdout, projected)
 	}
+}
+
+// emitList renders a JSON array. --json/--format json emits the full raw array;
+// table/csv/tsv project to the active field set (curated default or --fields).
+func emitList(data json.RawMessage, defaults []string) error {
+	if outputFormat == "json" || jsonOutput {
+		return writeRaw(data)
+	}
+	return renderTable(data, defaults)
 }
 
 // emitObj renders a single JSON object. --json/--format json emits the full raw
