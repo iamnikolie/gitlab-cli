@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"strings"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +25,15 @@ var (
 	mrUpdateState  string
 	mrSquash       bool
 	mrRemoveSource bool
+)
+
+// Curated default field sets (token-lean). --json shows the full object;
+// --fields overrides these.
+var (
+	mrListFields     = []string{"iid", "state", "draft", "title", "author.username", "source_branch", "target_branch", "web_url"}
+	mrViewFields     = []string{"iid", "state", "draft", "title", "author.username", "source_branch", "target_branch", "merge_status", "has_conflicts", "description", "web_url"}
+	mrApprovalFields = []string{"iid", "approvals_required", "approvals_left", "user_has_approved", "approved"}
+	noteFields       = []string{"id", "author.username", "created_at", "system", "body"}
 )
 
 // draftTitle prefixes "Draft: " when draft is set and not already prefixed.
@@ -50,6 +57,41 @@ func stateEvent(state string) string {
 	default:
 		return ""
 	}
+}
+
+// printMRDiff renders the /diffs array as readable unified patches.
+func printMRDiff(data json.RawMessage) error {
+	var files []struct {
+		OldPath     string `json:"old_path"`
+		NewPath     string `json:"new_path"`
+		NewFile     bool   `json:"new_file"`
+		DeletedFile bool   `json:"deleted_file"`
+		RenamedFile bool   `json:"renamed_file"`
+		Diff        string `json:"diff"`
+	}
+	if err := json.Unmarshal(data, &files); err != nil {
+		return fmt.Errorf("mr diff: %w", err)
+	}
+	if len(files) == 0 {
+		fmt.Println("_No changes._")
+		return nil
+	}
+	for _, f := range files {
+		fmt.Printf("diff --git a/%s b/%s\n", f.OldPath, f.NewPath)
+		switch {
+		case f.NewFile:
+			fmt.Printf("new file %s\n", f.NewPath)
+		case f.DeletedFile:
+			fmt.Printf("deleted file %s\n", f.OldPath)
+		case f.RenamedFile:
+			fmt.Printf("renamed %s -> %s\n", f.OldPath, f.NewPath)
+		}
+		fmt.Print(f.Diff)
+		if !strings.HasSuffix(f.Diff, "\n") {
+			fmt.Println()
+		}
+	}
+	return nil
 }
 
 var mrCmd = &cobra.Command{
@@ -80,10 +122,8 @@ var mrListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, mrLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, mrLimit)
+		return emitList(result, mrListFields)
 	},
 }
 
@@ -101,9 +141,7 @@ var mrViewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if err := outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		}); err != nil {
+		if err := emitObj(result, mrViewFields); err != nil {
 			return err
 		}
 		if mrComments {
@@ -111,10 +149,10 @@ var mrViewCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(os.Stdout, "\n## Notes")
-			return outputJSON(notes, func() error {
-				return render.List(os.Stdout, notes)
-			})
+			if outputFormat != "json" && !jsonOutput {
+				fmt.Println("\n## Notes")
+			}
+			return emitList(notes, noteFields)
 		}
 		return nil
 	},
@@ -145,9 +183,7 @@ var mrCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, mrViewFields)
 	},
 }
 
@@ -185,9 +221,7 @@ var mrUpdateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, mrViewFields)
 	},
 }
 
@@ -216,9 +250,7 @@ var mrMergeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, mrViewFields)
 	},
 }
 
@@ -236,9 +268,7 @@ var mrApproveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, mrApprovalFields)
 	},
 }
 
@@ -257,9 +287,7 @@ var mrNoteCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, noteFields)
 	},
 }
 
@@ -277,9 +305,10 @@ var mrDiffCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		if outputFormat == "json" || jsonOutput {
+			return writeRaw(result)
+		}
+		return printMRDiff(result)
 	},
 }
 

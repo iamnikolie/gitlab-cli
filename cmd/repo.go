@@ -6,7 +6,6 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 
@@ -22,6 +21,18 @@ var (
 	releaseName string
 	releaseDesc string
 	listLimit   int
+)
+
+var (
+	branchListFields  = []string{"name", "default", "protected", "merged", "commit.short_id", "commit.title"}
+	branchFields      = []string{"name", "protected", "merged", "commit.short_id"}
+	commitListFields  = []string{"short_id", "title", "author_name", "committed_date", "web_url"}
+	commitViewFields  = []string{"id", "short_id", "title", "author_name", "committed_date", "web_url"}
+	tagListFields     = []string{"name", "message", "target", "commit.short_id"}
+	releaseListFields = []string{"tag_name", "name", "released_at", "author.username"}
+	releaseViewFields = []string{"tag_name", "name", "description", "released_at", "author.username"}
+	projectListFields = []string{"id", "path_with_namespace", "name", "default_branch", "star_count", "web_url"}
+	projectViewFields = []string{"id", "path_with_namespace", "name", "description", "default_branch", "visibility", "star_count", "forks_count", "web_url"}
 )
 
 // releasePayload builds the JSON body for `release create`.
@@ -90,10 +101,8 @@ var branchListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, branchLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, branchLimit)
+		return emitList(result, branchListFields)
 	},
 }
 
@@ -117,9 +126,7 @@ var branchCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, branchFields)
 	},
 }
 
@@ -168,10 +175,8 @@ var commitListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, commitLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, commitLimit)
+		return emitList(result, commitListFields)
 	},
 }
 
@@ -189,9 +194,7 @@ var commitViewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, commitViewFields)
 	},
 }
 
@@ -215,10 +218,8 @@ var tagListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, tagLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, tagLimit)
+		return emitList(result, tagListFields)
 	},
 }
 
@@ -242,9 +243,7 @@ var tagCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, tagListFields)
 	},
 }
 
@@ -289,10 +288,8 @@ var releaseListCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, listLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, listLimit)
+		return emitList(result, releaseListFields)
 	},
 }
 
@@ -310,9 +307,7 @@ var releaseViewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, releaseViewFields)
 	},
 }
 
@@ -330,9 +325,7 @@ var releaseCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, releaseViewFields)
 	},
 }
 
@@ -354,10 +347,8 @@ var projectSearchCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		paginationHint(os.Stderr, hitLimit, listLimit)
-		return outputJSON(result, func() error {
-			return render.List(os.Stdout, result)
-		})
+		paginationHint(stderr, hitLimit, listLimit)
+		return emitList(result, projectListFields)
 	},
 }
 
@@ -373,9 +364,7 @@ var projectViewCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, projectViewFields)
 	},
 }
 

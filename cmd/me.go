@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"os"
-
-	"github.com/langgerone/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
+
+// meFields is the curated default column set for `gl me`.
+var meFields = []string{"id", "username", "name", "state", "web_url"}
 
 var meCmd = &cobra.Command{
 	Use:   "me",
@@ -15,9 +15,7 @@ var meCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return outputJSON(result, func() error {
-			return render.KV(os.Stdout, result)
-		})
+		return emitObj(result, meFields)
 	},
 }
 

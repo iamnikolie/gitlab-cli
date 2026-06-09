@@ -1,6 +1,7 @@
 package render
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,17 +20,65 @@ func JSON(w io.Writer, data json.RawMessage) error {
 	return enc.Encode(v)
 }
 
-// List renders a JSON array as a Markdown table.
-func List(w io.Writer, data json.RawMessage) error {
-	var items []map[string]any
-	if err := json.Unmarshal(data, &items); err != nil {
-		return fmt.Errorf("render.List: %w", err)
+// cell formats a decoded JSON value for display. Numbers are decoded with
+// UseNumber so integer IDs render as "5918904", not "5.918904e+06". Nested
+// objects/arrays render as compact JSON.
+func cell(v any) string {
+	switch n := v.(type) {
+	case nil:
+		return ""
+	case json.Number:
+		return n.String()
+	case string:
+		return n
+	case bool:
+		if n {
+			return "true"
+		}
+		return "false"
+	case map[string]any, []any:
+		b, _ := json.Marshal(n)
+		return string(b)
+	default:
+		return fmt.Sprintf("%v", v)
 	}
-	if len(items) == 0 {
-		fmt.Fprintln(w, "_No results._")
-		return nil
-	}
+}
 
+// tableCell formats a value for a Markdown table cell: newlines collapse to
+// spaces and pipes are escaped so the row stays on one line and parses.
+func tableCell(v any) string {
+	s := cell(v)
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return s
+}
+
+// decodeArray decodes a JSON array of objects with UseNumber.
+func decodeArray(data json.RawMessage) ([]map[string]any, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var items []map[string]any
+	if err := dec.Decode(&items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// decodeObject decodes a single JSON object with UseNumber.
+func decodeObject(data json.RawMessage) (map[string]any, error) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// sortedKeys returns the union of keys across items, sorted.
+func sortedKeys(items []map[string]any) []string {
 	keySet := map[string]bool{}
 	for _, item := range items {
 		for k := range item {
@@ -41,6 +90,21 @@ func List(w io.Writer, data json.RawMessage) error {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
+	return keys
+}
+
+// List renders a JSON array as a Markdown table.
+func List(w io.Writer, data json.RawMessage) error {
+	items, err := decodeArray(data)
+	if err != nil {
+		return fmt.Errorf("render.List: %w", err)
+	}
+	if len(items) == 0 {
+		fmt.Fprintln(w, "_No results._")
+		return nil
+	}
+
+	keys := sortedKeys(items)
 
 	sep := make([]string, len(keys))
 	for i := range sep {
@@ -52,12 +116,7 @@ func List(w io.Writer, data json.RawMessage) error {
 	for _, item := range items {
 		cells := make([]string, len(keys))
 		for i, k := range keys {
-			v := item[k]
-			if v == nil {
-				cells[i] = ""
-			} else {
-				cells[i] = fmt.Sprintf("%v", v)
-			}
+			cells[i] = tableCell(item[k])
 		}
 		fmt.Fprintf(w, "| %s |\n", strings.Join(cells, " | "))
 	}
@@ -66,8 +125,8 @@ func List(w io.Writer, data json.RawMessage) error {
 
 // KV renders a JSON object as Markdown key-value pairs.
 func KV(w io.Writer, data json.RawMessage) error {
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
+	m, err := decodeObject(data)
+	if err != nil {
 		return fmt.Errorf("render.KV: %w", err)
 	}
 	keys := make([]string, 0, len(m))
@@ -76,7 +135,7 @@ func KV(w io.Writer, data json.RawMessage) error {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(w, "**%s:** %v\n", k, m[k])
+		fmt.Fprintf(w, "**%s:** %s\n", k, cell(m[k]))
 	}
 	return nil
 }
@@ -92,35 +151,28 @@ func TSV(w io.Writer, data json.RawMessage) error {
 }
 
 func separatedValues(w io.Writer, data json.RawMessage, sep string) error {
-	var items []map[string]any
-	if err := json.Unmarshal(data, &items); err != nil {
+	items, err := decodeArray(data)
+	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
 	if len(items) == 0 {
 		return nil
 	}
-	keySet := map[string]bool{}
-	for _, item := range items {
-		for k := range item {
-			keySet[k] = true
-		}
-	}
-	keys := make([]string, 0, len(keySet))
-	for k := range keySet {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := sortedKeys(items)
 	fmt.Fprintln(w, strings.Join(keys, sep))
 	for _, item := range items {
 		cells := make([]string, len(keys))
 		for i, k := range keys {
-			v := item[k]
-			s := ""
-			if v != nil {
-				s = fmt.Sprintf("%v", v)
-			}
-			if sep == "," && strings.ContainsAny(s, ",\"\n") {
-				s = `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+			s := cell(item[k])
+			switch sep {
+			case ",":
+				if strings.ContainsAny(s, ",\"\n") {
+					s = `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
+				}
+			case "\t":
+				s = strings.ReplaceAll(s, "\t", " ")
+				s = strings.ReplaceAll(s, "\n", " ")
+				s = strings.ReplaceAll(s, "\r", " ")
 			}
 			cells[i] = s
 		}

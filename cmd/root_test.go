@@ -63,14 +63,35 @@ func TestIsNumeric(t *testing.T) {
 	assert.False(t, isNumeric(""))
 }
 
-func TestOutputJSON_RawWhenJSONFlag(t *testing.T) {
-	// Save and restore globals
-	defer func() { jsonOutput = false; outputFormat = "" }()
-	jsonOutput = true
-	var rendered bool
-	data := json.RawMessage(`{"a":1}`)
-	// outputJSON writes to os.Stdout; we only assert renderFn is NOT called.
-	err := outputJSON(data, func() error { rendered = true; return nil })
-	require.NoError(t, err)
-	assert.False(t, rendered)
+func TestProjectObject_TopLevelAndNested(t *testing.T) {
+	m := map[string]any{
+		"iid":   json.Number("42"),
+		"title": "Add X",
+		"extra": "drop me",
+		"author": map[string]any{
+			"username": "alice",
+			"id":       json.Number("7"),
+		},
+	}
+	out := projectObject(m, []string{"iid", "title", "author.username", "missing"})
+	assert.Equal(t, json.Number("42"), out["iid"])
+	assert.Equal(t, "Add X", out["title"])
+	assert.Equal(t, "alice", out["author.username"])
+	_, hasExtra := out["extra"]
+	assert.False(t, hasExtra)
+	_, hasMissing := out["missing"]
+	assert.False(t, hasMissing)
+}
+
+func TestProjectList_EmptyFieldsPassThrough(t *testing.T) {
+	data := json.RawMessage(`[{"a":1,"b":2}]`)
+	assert.JSONEq(t, string(data), string(projectList(data, nil)))
+}
+
+func TestActiveFields(t *testing.T) {
+	defer func() { projectFields = nil }()
+	projectFields = nil
+	assert.Equal(t, []string{"a", "b"}, activeFields([]string{"a", "b"}))
+	projectFields = []string{"x"}
+	assert.Equal(t, []string{"x"}, activeFields([]string{"a", "b"}))
 }

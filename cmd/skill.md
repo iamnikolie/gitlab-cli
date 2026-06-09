@@ -88,7 +88,8 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 | `--host <host>` | Override profile host |
 | `--project <path-or-id>` | Project for project-scoped commands |
 | `--format table\|json\|csv\|tsv` | Output format (default rendered) |
-| `--json` | Alias for `--format json` |
+| `--json` | Alias for `--format json` (full raw object) |
+| `--fields a,b,...` | Columns for table/csv/tsv (default: a curated set) |
 | `--verbose` | Dump API request/response to stderr |
 | `--yes` | Confirm destructive operations |
 
@@ -99,6 +100,24 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 gl branch delete old-feature --project group/repo --yes
 gl mr merge 42 --project group/repo --yes --squash --remove-source-branch
 ```
+
+## Token-efficient output
+
+List/view commands print a **curated subset** of columns by default, not every
+API field (GitLab objects have 50+ fields). To change the columns:
+
+```bash
+gl mr list --project group/repo --fields iid,title,state,author.username
+```
+
+- Dotted paths pull one level out of a nested object: `author.username`,
+  `commit.short_id`.
+- `--fields` applies to `table`, `csv`, and `tsv`.
+- `--json` / `--format json` always emits the **full raw object** (escape hatch
+  when you need a field not in the curated set).
+
+`gl mr diff` prints readable unified patches (use `--json` for the raw diffs
+array).
 
 ## Pagination signal
 

@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -10,22 +9,25 @@ import (
 
 	"github.com/langgerone/gitlab-cli/internal/client"
 	"github.com/langgerone/gitlab-cli/internal/config"
-	"github.com/langgerone/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 
 var (
-	jsonOutput   bool
-	profile      string
-	hostFlag     string
-	projectFlag  string
-	verbose      bool
-	outputFormat string
-	assumeYes    bool
+	jsonOutput    bool
+	profile       string
+	hostFlag      string
+	projectFlag   string
+	verbose       bool
+	outputFormat  string
+	assumeYes     bool
+	projectFields []string
 
 	cfg *config.Config
 	cli *client.Client
 )
+
+// stderr is the sink for pagination hints and other out-of-band signals.
+var stderr io.Writer = os.Stderr
 
 var rootCmd = &cobra.Command{
 	Use:   "gl",
@@ -81,6 +83,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "dump API request/response to stderr")
 	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "", "output format: table (default), json, csv, tsv")
 	rootCmd.PersistentFlags().BoolVar(&assumeYes, "yes", false, "confirm destructive operations")
+	rootCmd.PersistentFlags().StringSliceVar(&projectFields, "fields", nil, "comma-separated fields for table/csv/tsv (default: a curated set; --json shows everything)")
 }
 
 // profileExempt reports whether a command runs without a named profile —
@@ -131,27 +134,5 @@ func encodePath(p string) string {
 func paginationHint(w io.Writer, hitLimit bool, limit int) {
 	if hitLimit {
 		fmt.Fprintf(w, "(showing %d results — limit reached; pass --limit %d for more)\n", limit, limit*2)
-	}
-}
-
-// outputJSON prints raw JSON when --json / --format json is set, dispatches
-// csv/tsv, and otherwise calls renderFn (the rendered table/KV path).
-func outputJSON(data json.RawMessage, renderFn func() error) error {
-	switch outputFormat {
-	case "json":
-		os.Stdout.Write(data)
-		os.Stdout.Write([]byte("\n"))
-		return nil
-	case "csv":
-		return render.CSV(os.Stdout, data)
-	case "tsv":
-		return render.TSV(os.Stdout, data)
-	default:
-		if jsonOutput {
-			os.Stdout.Write(data)
-			os.Stdout.Write([]byte("\n"))
-			return nil
-		}
-		return renderFn()
 	}
 }
