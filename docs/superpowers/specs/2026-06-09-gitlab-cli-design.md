@@ -131,7 +131,7 @@ comment bodies) can be read from a file or stdin via `--description-file` /
 |---|---|
 | `gl mr list` | `--state opened\|merged\|closed\|all`, `--author`, `--label`, `--limit` |
 | `gl mr view <ref>` | `--comments` (include notes) |
-| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--draft` |
+| `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--draft`; glab-style `--source-branch`/`--target-branch` aliased (added 2026-06-09) |
 | `gl mr update <ref>` | `--title`, `--description`, `--state`, `--label`, `--target` |
 | `gl mr close \| reopen <ref>` | state_event close/reopen (added 2026-06-09) |
 | `gl mr rebase <ref>` | `--skip-ci` (added 2026-06-09) |

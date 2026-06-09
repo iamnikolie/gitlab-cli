@@ -77,7 +77,7 @@ any command.
 Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl mr list` — `--state opened|merged|closed|all`, `--author`, `--label`, `--limit`.
 - `gl mr view <id|branch>` — `--comments`.
-- `gl mr create` — `--source`, `--target`, `--title`, `--description`/`--description-file`, `--draft`.
+- `gl mr create` — `--source`, `--target`, `--title`, `--description`/`--description-file`, `--draft` (glab-style `--source-branch`/`--target-branch` accepted as aliases).
 - `gl mr update <id|branch>` — `--title`, `--description`/`--description-file`, `--state`, `--label`, `--target`.
 - `gl mr close|reopen <id|branch>`.
 - `gl mr rebase <id|branch>` — `--skip-ci`.

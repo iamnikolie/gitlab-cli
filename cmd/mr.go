@@ -8,7 +8,20 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
+
+// mrFlagAliases accepts glab-style flag names so muscle memory works:
+// --source-branch → --source, --target-branch → --target.
+func mrFlagAliases(f *pflag.FlagSet, name string) pflag.NormalizedName {
+	switch name {
+	case "source-branch":
+		name = "source"
+	case "target-branch":
+		name = "target"
+	}
+	return pflag.NormalizedName(name)
+}
 
 var (
 	mrState    string
@@ -746,6 +759,7 @@ func init() {
 	mrCreateCmd.Flags().StringVar(&mrDescriptionFile, "description-file", "", "read description from a file (- for stdin)")
 	mrCreateCmd.Flags().BoolVar(&mrDraft, "draft", false, "mark as draft")
 	mrCreateCmd.Flags().BoolVar(&mrCreateIDOnly, "id-only", false, "print only the new MR iid")
+	mrCreateCmd.Flags().SetNormalizeFunc(mrFlagAliases) // accept --source-branch/--target-branch
 
 	mrUpdateCmd.Flags().StringVar(&mrTitle, "title", "", "new title")
 	mrUpdateCmd.Flags().StringVar(&mrDescription, "description", "", "new description")
@@ -753,6 +767,7 @@ func init() {
 	mrUpdateCmd.Flags().StringVar(&mrUpdateState, "state", "", "opened (reopen) | closed (close)")
 	mrUpdateCmd.Flags().StringVar(&mrLabel, "label", "", "set label(s), comma-separated")
 	mrUpdateCmd.Flags().StringVar(&mrTarget, "target", "", "new target branch")
+	mrUpdateCmd.Flags().SetNormalizeFunc(mrFlagAliases) // accept --target-branch
 
 	mrNoteCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read comment text from a file (- for stdin)")
 	mrNoteCmd.Flags().BoolVar(&mrNoteIDOnly, "id-only", false, "print only the new note id (or discussion_id with --thread)")

@@ -4,9 +4,17 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMRFlagAliases(t *testing.T) {
+	fs := pflag.NewFlagSet("t", pflag.ContinueOnError)
+	assert.Equal(t, pflag.NormalizedName("source"), mrFlagAliases(fs, "source-branch"))
+	assert.Equal(t, pflag.NormalizedName("target"), mrFlagAliases(fs, "target-branch"))
+	assert.Equal(t, pflag.NormalizedName("title"), mrFlagAliases(fs, "title"))
+}
 
 func TestDraftTitle(t *testing.T) {
 	assert.Equal(t, "Draft: Add X", draftTitle("Add X", true))

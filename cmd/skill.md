@@ -45,7 +45,9 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 ### Merge requests
 
 Every `mr` command that takes `<id|branch>` accepts either the MR iid (`42`)
-or a source branch name (resolved to the open MR for that branch).
+or a source branch name (resolved to the open MR for that branch). On
+`mr create`/`update`, the glab-style `--source-branch`/`--target-branch` are
+accepted as aliases for `--source`/`--target`.
 
 | Command | Key flags |
 |---|---|
