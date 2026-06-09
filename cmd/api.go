@@ -12,9 +12,13 @@ import (
 )
 
 var (
-	apiFields []string
-	apiData   string
+	apiFields   []string
+	apiData     string
+	apiPaginate bool
 )
+
+// apiMaxPaginate caps --paginate so a runaway endpoint can't loop forever.
+const apiMaxPaginate = 100_000
 
 // parseFields turns ["k=v", ...] into url.Values. Repeated keys accumulate.
 func parseFields(fields []string) (url.Values, error) {
@@ -135,6 +139,17 @@ GraphQL escape hatch:
 			contentType = "application/x-www-form-urlencoded"
 		}
 
+		if apiPaginate && method == "GET" {
+			result, hitLimit, err := cli.GetPaginated(cmd.Context(), path, query, apiMaxPaginate)
+			if err != nil {
+				return err
+			}
+			if hitLimit {
+				fmt.Fprintf(stderr, "(stopped at %d items; endpoint may have more)\n", apiMaxPaginate)
+			}
+			return printAPIResult(result)
+		}
+
 		result, err := cli.Send(cmd.Context(), method, path, query, body, contentType)
 		if err != nil {
 			return err
@@ -146,5 +161,6 @@ GraphQL escape hatch:
 func init() {
 	apiCmd.Flags().StringArrayVarP(&apiFields, "field", "f", nil, "form field key=value (repeatable)")
 	apiCmd.Flags().StringVar(&apiData, "data", "", "raw JSON request body")
+	apiCmd.Flags().BoolVar(&apiPaginate, "paginate", false, "fetch all pages and merge into one array (GET only)")
 	rootCmd.AddCommand(apiCmd)
 }

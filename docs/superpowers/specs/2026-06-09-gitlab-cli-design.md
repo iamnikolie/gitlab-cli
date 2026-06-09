@@ -110,9 +110,11 @@ project-scoped command is run without `--project`, it exits 1 with a hint.
 | Command | Notes |
 |---|---|
 | `gl config init` | Write host + token to profile |
-| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data` raw body |
+| `gl config show` | Show active profile/host/base URL/token state, masked (added 2026-06-09) |
+| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data` raw body, `--paginate` GET all pages (added 2026-06-09) |
 | `gl api graphql -f query=...` | GraphQL escape hatch |
 | `gl me` | Current user (`/user`) |
+| `gl version` | Version, also `--version` (added 2026-06-09) |
 | `gl skill` | Print embedded skill.md |
 
 ### Merge Requests
@@ -153,7 +155,7 @@ comment bodies) can be read from a file or stdin via `--description-file` /
 | `gl job trace <job-id>` | Print job log; `--follow` streams until done, exit 1 on failure (added 2026-06-09) |
 | `gl job retry <job-id>` | — |
 | `gl job cancel <job-id>` | `--yes` (required) |
-| `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd) |
+| `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd); exit 1 if invalid (added 2026-06-09) |
 
 ### Repo & files
 
@@ -187,6 +189,9 @@ comment bodies) can be read from a file or stdin via `--description-file` /
 - `SilenceUsage: true` on root — error messages carry recovery hints; usage
   output is noise for agents.
 - Not-found → exit 1 (not silent success).
+- Exit codes carry pass/fail: `ci lint` exits 1 on an invalid config; `job trace
+  --follow` exits 1 when the job fails. `--id-only` (mr create / mr note / ci
+  run) prints just the new id for piping (added 2026-06-09).
 - List commands print a stderr signal when results hit `--limit` (more may exist).
 - Destructive commands (`mr merge`, `branch delete`, `tag delete`, `job cancel`)
   require `--yes`.

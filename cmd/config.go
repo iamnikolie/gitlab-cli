@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,17 @@ import (
 	"github.com/langgerone/gitlab-cli/internal/config"
 	"github.com/spf13/cobra"
 )
+
+// maskToken hides all but the last 4 chars of a token.
+func maskToken(t string) string {
+	if t == "" {
+		return "not set"
+	}
+	if len(t) <= 4 {
+		return "set"
+	}
+	return "set (…" + t[len(t)-4:] + ")"
+}
 
 var configCmd = &cobra.Command{
 	Use:   "config",
@@ -40,7 +52,33 @@ var configInitCmd = &cobra.Command{
 	},
 }
 
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Show the active profile's host and token state",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg, err := config.Load(profile)
+		if err != nil {
+			return err
+		}
+		host := cfg.Host
+		if host == "" {
+			host = "gitlab.com"
+		}
+		if hostFlag != "" {
+			host = hostFlag
+		}
+		row := map[string]any{
+			"profile":  profile,
+			"host":     host,
+			"base_url": "https://" + host + "/api/v4",
+			"token":    maskToken(cfg.Token),
+		}
+		b, _ := json.Marshal(row)
+		return emitObj(b, []string{"profile", "host", "base_url", "token"})
+	},
+}
+
 func init() {
-	configCmd.AddCommand(configInitCmd)
+	configCmd.AddCommand(configInitCmd, configShowCmd)
 	rootCmd.AddCommand(configCmd)
 }

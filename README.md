@@ -66,9 +66,11 @@ any command.
 
 ### Plumbing
 - `gl config init` — write host + token to the profile.
-- `gl api <METHOD> <path>` — raw REST v4 (`-f key=val` form fields, `--data` raw JSON body).
+- `gl config show` — show the active profile, host, base URL, and token state (masked).
+- `gl api <METHOD> <path>` — raw REST v4 (`-f key=val` form fields, `--data` raw JSON body, `--paginate` to fetch all pages on GET).
 - `gl api graphql -f query=...` — GraphQL escape hatch.
 - `gl me` — current user.
+- `gl version` — version (also `gl --version`).
 - `gl skill` — print the embedded skill document.
 
 ### Merge requests
@@ -96,7 +98,8 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl job trace <job-id>` — `--follow` streams the log until the job finishes (exit 1 if it fails).
 - `gl job retry <job-id>`.
 - `gl job cancel <job-id>` — `--yes` (required).
-- `gl ci lint [file]` — lints `.gitlab-ci.yml` (default: file in cwd).
+- `gl ci lint [file]` — lints `.gitlab-ci.yml` (default: file in cwd); exits non-zero if the config is invalid.
+- `gl ci run` and `gl mr create`/`gl mr note` accept `--id-only` to print just the new id (for piping).
 
 ### Repo & files
 - `gl file get <path>` — `--ref`.

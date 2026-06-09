@@ -3,11 +3,44 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 
 	"github.com/langgerone/gitlab-cli/internal/render"
 )
+
+// fieldString returns one top-level field of a JSON object as a string.
+func fieldString(data json.RawMessage, field string) (string, error) {
+	m, err := decodeObject(data)
+	if err != nil {
+		return "", err
+	}
+	v, ok := m[field]
+	if !ok {
+		return "", fmt.Errorf("no %q in response", field)
+	}
+	switch x := v.(type) {
+	case nil:
+		return "", nil
+	case json.Number:
+		return x.String(), nil
+	case string:
+		return x, nil
+	default:
+		return fmt.Sprintf("%v", x), nil
+	}
+}
+
+// printIDOnly prints a single field's raw value (for scripting / chaining).
+func printIDOnly(data json.RawMessage, field string) error {
+	s, err := fieldString(data, field)
+	if err != nil {
+		return err
+	}
+	fmt.Println(s)
+	return nil
+}
 
 // projectObject keeps only the requested fields from one decoded object.
 // A field "a.b" pulls nested object a's key b and outputs it under key "a.b".

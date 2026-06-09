@@ -49,7 +49,7 @@ func TestPaginationHint_BelowLimit(t *testing.T) {
 }
 
 func TestProfileExempt(t *testing.T) {
-	for _, n := range []string{"gl", "skill", "help", "completion", "bash", "zsh", "fish", "powershell"} {
+	for _, n := range []string{"gl", "skill", "help", "completion", "version", "bash", "zsh", "fish", "powershell"} {
 		assert.True(t, profileExempt(n), "exempt: %s", n)
 	}
 	for _, n := range []string{"me", "init", "list", "view", "mr", "api"} {
