@@ -37,8 +37,9 @@ Run 'gl skill' to print the full Claude skill reference (commands, flags, workfl
 	// and error messages already carry recovery hints.
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// config init doesn't need auth
-		if cmd.Name() == "init" {
+		// config init and skill don't need auth: init writes the token,
+		// skill prints a static doc agents read before configuring.
+		if cmd.Name() == "init" || cmd.Name() == "skill" {
 			return nil
 		}
 		var err error
