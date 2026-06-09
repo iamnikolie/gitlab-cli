@@ -72,20 +72,24 @@ any command.
 - `gl skill` — print the embedded skill document.
 
 ### Merge requests
+Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl mr list` — `--state opened|merged|closed|all`, `--author`, `--label`, `--limit`.
-- `gl mr view <iid>` — `--comments`.
+- `gl mr view <id|branch>` — `--comments`.
 - `gl mr create` — `--source`, `--target`, `--title`, `--description`, `--draft`.
-- `gl mr update <iid>` — `--title`, `--description`, `--state`, `--label`, `--target`.
-- `gl mr merge <iid>` — `--yes` (required), `--squash`, `--remove-source-branch`.
-- `gl mr approve <iid>`.
-- `gl mr note <iid> <text>`.
-- `gl mr diff <iid>`.
+- `gl mr update <id|branch>` — `--title`, `--description`, `--state`, `--label`, `--target`.
+- `gl mr close|reopen <id|branch>`.
+- `gl mr rebase <id|branch>` — `--skip-ci`.
+- `gl mr merge <id|branch>` — `--yes` (required), `--squash`, `--remove-source-branch`.
+- `gl mr approve <id|branch>`.
+- `gl mr note <id|branch> <text>`.
+- `gl mr diff <id|branch>` — unified patch.
 
 ### Pipelines & CI
 - `gl pipeline list` — `--ref`, `--status`.
 - `gl pipeline status [id]` — latest for `--ref` when id omitted.
+- `gl ci run` — `--ref` (required), `--var KEY=VAL` (repeatable); create and run a pipeline.
 - `gl job list <pipeline-id>`.
-- `gl job trace <job-id>`.
+- `gl job trace <job-id>` — `--follow` streams the log until the job finishes (exit 1 if it fails).
 - `gl job retry <job-id>`.
 - `gl job cancel <job-id>` — `--yes` (required).
 - `gl ci lint [file]` — lints `.gitlab-ci.yml` (default: file in cwd).

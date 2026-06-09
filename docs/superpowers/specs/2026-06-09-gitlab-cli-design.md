@@ -119,14 +119,21 @@ project-scoped command is run without `--project`, it exits 1 with a hint.
 
 | Command | Key flags |
 |---|---|
+Commands taking `<ref>` accept an MR iid or a source branch name (added
+2026-06-09; branch resolved via `?source_branch=`).
+
+| Command | Key flags |
+|---|---|
 | `gl mr list` | `--state opened\|merged\|closed\|all`, `--author`, `--label`, `--limit` |
-| `gl mr view <iid>` | `--comments` (include notes) |
+| `gl mr view <ref>` | `--comments` (include notes) |
 | `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--draft` |
-| `gl mr update <iid>` | `--title`, `--description`, `--state`, `--label`, `--target` |
-| `gl mr merge <iid>` | `--yes` (required), `--squash`, `--remove-source-branch` |
-| `gl mr approve <iid>` | — |
-| `gl mr note <iid> <text>` | Add a comment |
-| `gl mr diff <iid>` | Show changes |
+| `gl mr update <ref>` | `--title`, `--description`, `--state`, `--label`, `--target` |
+| `gl mr close \| reopen <ref>` | state_event close/reopen (added 2026-06-09) |
+| `gl mr rebase <ref>` | `--skip-ci` (added 2026-06-09) |
+| `gl mr merge <ref>` | `--yes` (required), `--squash`, `--remove-source-branch` |
+| `gl mr approve <ref>` | — |
+| `gl mr note <ref> <text>` | Add a comment |
+| `gl mr diff <ref>` | Show changes (unified patch) |
 
 ### Pipelines & CI
 
@@ -134,8 +141,9 @@ project-scoped command is run without `--project`, it exits 1 with a hint.
 |---|---|
 | `gl pipeline list` | `--ref`, `--status` |
 | `gl pipeline status [id]` | Latest for ref when id omitted |
+| `gl ci run` | `--ref` (required), `--var KEY=VAL` — create/run a pipeline (added 2026-06-09) |
 | `gl job list <pipeline-id>` | — |
-| `gl job trace <job-id>` | Print job log |
+| `gl job trace <job-id>` | Print job log; `--follow` streams until done, exit 1 on failure (added 2026-06-09) |
 | `gl job retry <job-id>` | — |
 | `gl job cancel <job-id>` | `--yes` (required) |
 | `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd) |

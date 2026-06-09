@@ -41,24 +41,32 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 | `gl skill` | Print this reference |
 
 ### Merge requests
+
+Every `mr` command that takes `<id|branch>` accepts either the MR iid (`42`)
+or a source branch name (resolved to the open MR for that branch).
+
 | Command | Key flags |
 |---|---|
 | `gl mr list` | `--state opened\|merged\|closed\|all`, `--author`, `--label`, `--limit` |
-| `gl mr view <iid>` | `--comments` |
+| `gl mr view <id\|branch>` | `--comments` |
 | `gl mr create` | `--source`, `--target`, `--title`, `--description`, `--draft` |
-| `gl mr update <iid>` | `--title`, `--description`, `--state`, `--label`, `--target` |
-| `gl mr merge <iid>` | `--yes` (required), `--squash`, `--remove-source-branch` |
-| `gl mr approve <iid>` | — |
-| `gl mr note <iid> <text>` | Add a comment |
-| `gl mr diff <iid>` | Show changes |
+| `gl mr update <id\|branch>` | `--title`, `--description`, `--state`, `--label`, `--target` |
+| `gl mr close <id\|branch>` | Close |
+| `gl mr reopen <id\|branch>` | Reopen |
+| `gl mr rebase <id\|branch>` | `--skip-ci` |
+| `gl mr merge <id\|branch>` | `--yes` (required), `--squash`, `--remove-source-branch` |
+| `gl mr approve <id\|branch>` | — |
+| `gl mr note <id\|branch> <text>` | Add a comment |
+| `gl mr diff <id\|branch>` | Show changes (unified patch) |
 
 ### Pipelines & CI
 | Command | Key flags |
 |---|---|
 | `gl pipeline list` | `--ref`, `--status` |
 | `gl pipeline status [id]` | Latest for `--ref` when id omitted |
+| `gl ci run` | `--ref` (required), `--var KEY=VAL` (repeatable) — create/run a pipeline |
 | `gl job list <pipeline-id>` | — |
-| `gl job trace <job-id>` | Print job log |
+| `gl job trace <job-id>` | `--follow` (stream until done; exit 1 if the job fails) |
 | `gl job retry <job-id>` | — |
 | `gl job cancel <job-id>` | `--yes` (required) |
 | `gl ci lint [file]` | Lint `.gitlab-ci.yml` (default: file in cwd) |
@@ -149,6 +157,14 @@ gl pipeline status --project group/repo --ref main
 gl job list 9999 --project group/repo
 gl job trace 12345 --project group/repo
 gl ci lint --project group/repo            # lints .gitlab-ci.yml in cwd
+```
+
+**Run a pipeline and watch it:**
+```bash
+gl ci run --project group/repo --ref my-branch --var DEPLOY=1
+gl pipeline status --project group/repo --ref my-branch      # get the pipeline id
+gl job list <pipeline-id> --project group/repo               # get a job id
+gl job trace <job-id> --project group/repo --follow          # stream until done; exit 1 if it fails
 ```
 
 **Read repo content:**
