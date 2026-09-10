@@ -67,7 +67,7 @@ any command.
 ### Plumbing
 - `gl config init` — write host + token to the profile.
 - `gl config show` — show the active profile, host, base URL, and token state (masked).
-- `gl api <METHOD> <path>` — raw REST v4 (`-f key=val` form fields, `--data` raw JSON body, `--paginate` to fetch all pages on GET).
+- `gl api <METHOD> <path>` — raw REST v4 (`-f key=val` form fields, `--data`/`--data-file` raw JSON body, `--paginate` to fetch all pages on GET). Bracketed `-f` keys are refused: GitLab drops nested form fields while still answering 2xx — send such bodies as JSON.
 - `gl api graphql -f query=...` — GraphQL escape hatch.
 - `gl me` — current user.
 - `gl version` — version (also `gl --version`).
@@ -85,7 +85,8 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `gl mr approve <id|branch>`.
 - `gl mr note <id|branch> <text>` — `--thread` creates a resolvable thread and returns its `discussion_id`.
 - `gl mr note-delete <id|branch> <note-id>...` — delete one or more comments (requires `--yes`).
-- `gl mr discussions <id|branch>` — list threads (`discussion_id`, resolvable/resolved, body); `--system` includes system threads.
+- `gl mr comment <id|branch> [text]` — inline comment anchored to a diff line: `--path` (required) plus `--line` (new file) or `--old-line` (deleted line); `--body-file` for long text. Resolves the sha triple and the old/new line pair from the API, then reads the note back and fails if the anchor was dropped.
+- `gl mr discussions <id|branch>` — list threads (`discussion_id`, `type`, `path`, `line`, resolvable/resolved, body); `--system` includes system threads.
 - `gl mr reply <id|branch> <discussion-id> <text>` — reply into a thread.
 - `gl mr resolve | unresolve <id|branch> <discussion-id>` — resolve/unresolve a thread.
 - `gl mr diff <id|branch>` — unified patch.
@@ -128,10 +129,13 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
 - `--limit` caps total results; the client paginates (`per_page`/`page`) until
   the limit or exhaustion. A stderr note prints when the limit is hit.
 - Not-found responses exit 1 (not silent success).
+- API errors go to stderr only — stdout stays empty, so piping stdout into a
+  JSON parser never sees an error object masquerading as data.
 - Destructive commands (`mr merge`, `branch delete`, `tag delete`, `job cancel`)
   require `--yes`.
 - List/view output is token-lean: a curated column set by default. Use
   `--fields` to change columns, or `--json` for the full raw object.
 - Long text (MR/release descriptions, comments) can come from a file or stdin:
   `--description-file <path>` / `--body-file <path>` (use `-` for stdin),
-  avoiding shell-quoting. Mutually exclusive with the inline form.
+  avoiding shell-quoting. Mutually exclusive with the inline form. `gl api`
+  takes `--data-file <path>` for the same reason.

@@ -47,6 +47,12 @@ var (
 	mrNoteThread   bool
 	mrDiscLimit    int
 	mrDiscSystem   bool
+
+	mrCommentPath    string
+	mrCommentLine    int
+	mrCommentOldLine int
+	mrCommentDryRun  bool
+	mrDiffLimit      int
 )
 
 // Curated default field sets (token-lean). --json shows the full object;
@@ -56,7 +62,8 @@ var (
 	mrViewFields     = []string{"iid", "state", "draft", "title", "author.username", "source_branch", "target_branch", "merge_status", "has_conflicts", "description", "web_url"}
 	mrApprovalFields = []string{"iid", "approvals_required", "approvals_left", "user_has_approved", "approved"}
 	noteFields       = []string{"id", "author.username", "created_at", "system", "body"}
-	discussionFields = []string{"discussion_id", "resolvable", "resolved", "notes", "author", "body"}
+	discussionFields = []string{"discussion_id", "type", "path", "line", "resolvable", "resolved", "notes", "author", "body"}
+	diffNoteFields   = []string{"discussion_id", "note_id", "type", "path", "line", "head_sha", "author"}
 )
 
 // draftTitle prefixes "Draft: " when draft is set and not already prefixed.
@@ -181,9 +188,17 @@ func flattenDiscussions(data json.RawMessage, includeSystem bool) (json.RawMessa
 			System     bool   `json:"system"`
 			Resolvable bool   `json:"resolvable"`
 			Resolved   bool   `json:"resolved"`
+			Type       string `json:"type"`
 			Author     struct {
 				Username string `json:"username"`
 			} `json:"author"`
+			Position *struct {
+				NewPath string `json:"new_path"`
+				OldPath string `json:"old_path"`
+				NewLine *int   `json:"new_line"`
+				OldLine *int   `json:"old_line"`
+				HeadSHA string `json:"head_sha"`
+			} `json:"position"`
 		} `json:"notes"`
 	}
 	if err := json.Unmarshal(data, &discs); err != nil {
@@ -198,14 +213,31 @@ func flattenDiscussions(data json.RawMessage, includeSystem bool) (json.RawMessa
 		if head.System && !includeSystem {
 			continue
 		}
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"discussion_id": d.ID,
+			"type":          head.Type,
+			"path":          "",
+			"line":          "",
+			"head_sha":      "",
 			"author":        head.Author.Username,
 			"resolvable":    head.Resolvable,
 			"resolved":      head.Resolved,
 			"notes":         len(d.Notes),
 			"body":          head.Body,
-		})
+		}
+		// An anchored thread carries the file, line and the revision it was
+		// filed against — a head_sha behind the MR's current head means the
+		// line numbers in it no longer point at the file being reviewed.
+		if head.Position != nil {
+			path := head.Position.NewPath
+			if path == "" {
+				path = head.Position.OldPath
+			}
+			row["path"] = path
+			row["line"] = lineLabel(head.Position.OldLine, head.Position.NewLine)
+			row["head_sha"] = shortSHA(head.Position.HeadSHA)
+		}
+		rows = append(rows, row)
 	}
 	b, err := json.Marshal(rows)
 	if err != nil {
@@ -719,6 +751,202 @@ var mrUnresolveCmd = &cobra.Command{
 	},
 }
 
+// mrDiffFile is one changed file of an MR, as returned by /diffs.
+type mrDiffFile struct {
+	OldPath     string `json:"old_path"`
+	NewPath     string `json:"new_path"`
+	NewFile     bool   `json:"new_file"`
+	DeletedFile bool   `json:"deleted_file"`
+	RenamedFile bool   `json:"renamed_file"`
+	Diff        string `json:"diff"`
+}
+
+// findDiffFile locates a changed file by path, matching either side of a
+// rename. The error lists the changed paths, so a typo is one call to fix.
+func findDiffFile(files []mrDiffFile, path string) (mrDiffFile, error) {
+	for _, f := range files {
+		if f.NewPath == path || f.OldPath == path {
+			return f, nil
+		}
+	}
+	paths := make([]string, 0, len(files))
+	for _, f := range files {
+		paths = append(paths, f.NewPath)
+	}
+	const shown = 20
+	suffix := ""
+	if len(paths) > shown {
+		suffix = fmt.Sprintf(" (+%d more)", len(paths)-shown)
+		paths = paths[:shown]
+	}
+	if len(paths) == 0 {
+		return mrDiffFile{}, fmt.Errorf("%s is not part of this MR — it changes no files", path)
+	}
+	return mrDiffFile{}, fmt.Errorf("%s is not part of this MR — changed files: %s%s", path, strings.Join(paths, ", "), suffix)
+}
+
+// mrDiffRefs fetches the sha triple an inline note must be anchored against.
+// Taking them from the API (not a local checkout) is what keeps a note on the
+// revision that was actually reviewed.
+func mrDiffRefs(cmd *cobra.Command, project, iid string) (diffPosition, error) {
+	data, err := cli.Get(cmd.Context(), "/projects/"+project+"/merge_requests/"+iid, nil)
+	if err != nil {
+		return diffPosition{}, err
+	}
+	var mr struct {
+		DiffRefs struct {
+			BaseSHA  string `json:"base_sha"`
+			StartSHA string `json:"start_sha"`
+			HeadSHA  string `json:"head_sha"`
+		} `json:"diff_refs"`
+	}
+	if err := json.Unmarshal(data, &mr); err != nil {
+		return diffPosition{}, fmt.Errorf("parse merge request: %w", err)
+	}
+	if mr.DiffRefs.HeadSHA == "" {
+		return diffPosition{}, fmt.Errorf("merge request %s has no diff_refs — it may have no commits yet", iid)
+	}
+	return diffPosition{
+		PositionType: "text",
+		BaseSHA:      mr.DiffRefs.BaseSHA,
+		StartSHA:     mr.DiffRefs.StartSHA,
+		HeadSHA:      mr.DiffRefs.HeadSHA,
+	}, nil
+}
+
+// mrChangedFiles fetches the MR's diffs, paginating so a large MR does not
+// hide the file being commented on behind the default page size.
+func mrChangedFiles(cmd *cobra.Command, project, iid string) ([]mrDiffFile, error) {
+	data, hitLimit, err := cli.GetPaginated(cmd.Context(),
+		"/projects/"+project+"/merge_requests/"+iid+"/diffs", nil, mrDiffLimit)
+	if err != nil {
+		return nil, err
+	}
+	paginationHint(stderr, hitLimit, mrDiffLimit)
+	var files []mrDiffFile
+	if err := json.Unmarshal(data, &files); err != nil {
+		return nil, fmt.Errorf("parse diffs: %w", err)
+	}
+	return files, nil
+}
+
+// printDryRunPosition shows the resolved anchor without posting, so a line
+// choice can be checked before it lands on someone's merge request.
+func printDryRunPosition(pos diffPosition, text string) error {
+	if outputFormat == "json" || jsonOutput {
+		b, err := json.Marshal(map[string]any{"body": text, "position": pos})
+		if err != nil {
+			return fmt.Errorf("encode note: %w", err)
+		}
+		return writeRaw(b)
+	}
+	row, err := json.Marshal(map[string]any{
+		"path":     pos.NewPath,
+		"line":     lineLabel(pos.OldLine, pos.NewLine),
+		"head_sha": shortSHA(pos.HeadSHA),
+		"base_sha": shortSHA(pos.BaseSHA),
+		"dry_run":  true,
+	})
+	if err != nil {
+		return fmt.Errorf("encode result: %w", err)
+	}
+	return emitObj(row, []string{"dry_run", "path", "line", "head_sha", "base_sha"})
+}
+
+var mrCommentCmd = &cobra.Command{
+	Use:   "comment <id|branch> [text]",
+	Short: "Comment on a line of the diff (anchored DiffNote, verified after posting)",
+	Long: `Post a review comment anchored to a line of a merge request's diff.
+
+The sha triple and the old/new line pair are resolved from the API: an added
+line carries new_line only, a context line both, a deleted line old_line only.
+Getting that wrong makes GitLab answer 201 and drop the anchor, so the created
+note is read back and the command fails if it landed as a plain comment.
+
+  gl mr comment 42 --project g/r --path internal/api/user.go --line 49 --body-file review.md
+  gl mr comment 42 --project g/r --path old.go --old-line 12 "why was this dropped?"
+  gl mr comment 42 --project g/r --path x.go --line 49 --dry-run "check the anchor first"`,
+	Args: cobra.RangeArgs(1, 2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		p, err := projectRef()
+		if err != nil {
+			return err
+		}
+		if mrCommentPath == "" {
+			return fmt.Errorf("--path is required (the file to comment on, as it appears in the diff)")
+		}
+		inline := ""
+		if len(args) == 2 {
+			inline = args[1]
+		}
+		text, err := textFromArgOrFile(inline, len(args) == 2, mrBodyFile)
+		if err != nil {
+			return err
+		}
+		iid, err := resolveMRIID(cmd, p, args[0])
+		if err != nil {
+			return err
+		}
+		pos, err := mrDiffRefs(cmd, p, iid)
+		if err != nil {
+			return err
+		}
+		files, err := mrChangedFiles(cmd, p, iid)
+		if err != nil {
+			return err
+		}
+		file, err := findDiffFile(files, mrCommentPath)
+		if err != nil {
+			return err
+		}
+		pos.OldPath, pos.NewPath = file.OldPath, file.NewPath
+		pos.OldLine, pos.NewLine, err = anchorLine(parseHunks(file.Diff), mrCommentPath, mrCommentLine, mrCommentOldLine)
+		if err != nil {
+			return err
+		}
+
+		if mrCommentDryRun {
+			return printDryRunPosition(pos, text)
+		}
+
+		body, err := json.Marshal(map[string]any{"body": text, "position": pos})
+		if err != nil {
+			return fmt.Errorf("encode note: %w", err)
+		}
+		result, err := cli.Send(cmd.Context(), "POST",
+			"/projects/"+p+"/merge_requests/"+iid+"/discussions", nil, body, "application/json")
+		if err != nil {
+			return err
+		}
+
+		discID, note, verifyErr := verifyDiffNote(result, pos, p, iid)
+		if verifyErr != nil {
+			return verifyErr
+		}
+		if outputFormat == "json" || jsonOutput {
+			return writeRaw(result)
+		}
+		if mrNoteIDOnly {
+			fmt.Println(discID)
+			return nil
+		}
+		row := map[string]any{
+			"discussion_id": discID,
+			"note_id":       note.ID,
+			"type":          note.Type,
+			"path":          note.Position.NewPath,
+			"line":          lineLabel(note.Position.OldLine, note.Position.NewLine),
+			"head_sha":      shortSHA(note.Position.HeadSHA),
+			"author":        note.Author.Username,
+		}
+		b, err := json.Marshal(row)
+		if err != nil {
+			return fmt.Errorf("encode result: %w", err)
+		}
+		return emitObj(b, diffNoteFields)
+	},
+}
+
 var mrDiffCmd = &cobra.Command{
 	Use:   "diff <id|branch>",
 	Short: "Show a merge request's changes",
@@ -780,9 +1008,17 @@ func init() {
 
 	mrNoteCmd.Flags().BoolVar(&mrNoteThread, "thread", false, "create a resolvable thread (returns discussion_id) instead of a flat comment")
 
+	mrCommentCmd.Flags().StringVar(&mrCommentPath, "path", "", "file path as it appears in the diff (required)")
+	mrCommentCmd.Flags().IntVar(&mrCommentLine, "line", 0, "line number in the new file (added or context line)")
+	mrCommentCmd.Flags().IntVar(&mrCommentOldLine, "old-line", 0, "line number in the old file (for a deleted line)")
+	mrCommentCmd.Flags().StringVar(&mrBodyFile, "body-file", "", "read comment text from a file (- for stdin)")
+	mrCommentCmd.Flags().BoolVar(&mrNoteIDOnly, "id-only", false, "print only the new discussion_id")
+	mrCommentCmd.Flags().BoolVar(&mrCommentDryRun, "dry-run", false, "resolve and print the anchor without posting")
+	mrCommentCmd.Flags().IntVar(&mrDiffLimit, "file-limit", 300, "max changed files to scan for --path")
+
 	mrDiscussionsCmd.Flags().IntVar(&mrDiscLimit, "limit", 50, "max threads")
 	mrDiscussionsCmd.Flags().BoolVar(&mrDiscSystem, "system", false, "include system threads (assigned, labels, milestones)")
 
-	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrNoteDeleteCmd, mrDiscussionsCmd, mrReplyCmd, mrResolveCmd, mrUnresolveCmd, mrDiffCmd)
+	mrCmd.AddCommand(mrListCmd, mrViewCmd, mrCreateCmd, mrUpdateCmd, mrCloseCmd, mrReopenCmd, mrRebaseCmd, mrMergeCmd, mrApproveCmd, mrNoteCmd, mrNoteDeleteCmd, mrDiscussionsCmd, mrCommentCmd, mrReplyCmd, mrResolveCmd, mrUnresolveCmd, mrDiffCmd)
 	rootCmd.AddCommand(mrCmd)
 }
