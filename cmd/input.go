@@ -56,3 +56,17 @@ func textFromArgOrFile(arg string, argGiven bool, file string) (string, error) {
 		return "", fmt.Errorf("provide text inline or via --body-file")
 	}
 }
+
+// dataArg resolves a raw request body from an inline value or a file (path, or
+// "-" for stdin). The two are mutually exclusive. A file keeps JSON bodies out
+// of the shell, where quoting and command substitution get in the way.
+func dataArg(inline, file string) (string, error) {
+	switch {
+	case inline != "" && file != "":
+		return "", fmt.Errorf("use either --data or --data-file, not both")
+	case file != "":
+		return readFileArg(file)
+	default:
+		return inline, nil
+	}
+}

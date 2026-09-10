@@ -78,3 +78,29 @@ func TestTextFromArgOrFile_Neither(t *testing.T) {
 	_, err := textFromArgOrFile("", false, "")
 	require.Error(t, err)
 }
+
+func TestDataArg_File(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "note.json")
+	require.NoError(t, os.WriteFile(path, []byte(`{"body":"hi"}`), 0o600))
+
+	got, err := dataArg("", path)
+	require.NoError(t, err)
+	assert.Equal(t, `{"body":"hi"}`, got)
+}
+
+func TestDataArg_InlineAndEmpty(t *testing.T) {
+	got, err := dataArg(`{"a":1}`, "")
+	require.NoError(t, err)
+	assert.Equal(t, `{"a":1}`, got)
+
+	got, err = dataArg("", "")
+	require.NoError(t, err)
+	assert.Equal(t, "", got)
+}
+
+func TestDataArg_BothIsAnError(t *testing.T) {
+	_, err := dataArg(`{"a":1}`, "note.json")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not both")
+}

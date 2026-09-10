@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/langgerone/gitlab-cli/internal/render"
@@ -14,6 +15,7 @@ import (
 var (
 	apiFields   []string
 	apiData     string
+	apiDataFile string
 	apiPaginate bool
 )
 
@@ -31,6 +33,26 @@ func parseFields(fields []string) (url.Values, error) {
 		v.Add(k, val)
 	}
 	return v, nil
+}
+
+// checkFormFields rejects bracketed keys in a form-encoded body. GitLab does
+// not reassemble `position[new_line]=49` into a nested object: it ignores the
+// field, answers 2xx anyway, and the resource is created without it — an
+// inline diff note silently becomes a plain comment. Nested structures have to
+// go through --data/--data-file as JSON. Query strings are unaffected (Rails
+// parses bracketed query params), so this only guards request bodies.
+func checkFormFields(fields url.Values) error {
+	keys := make([]string, 0, len(fields))
+	for k := range fields {
+		if strings.ContainsAny(k, "[]") {
+			keys = append(keys, k)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	sort.Strings(keys)
+	return fmt.Errorf("-f %s: bracketed keys are dropped by GitLab in a form body — the request still returns 2xx with the field missing. Send the whole body as JSON instead: --data-file <file> (or --data '{\"position\":{...}}')", strings.Join(keys, ", "))
 }
 
 // splitPathQuery splits a user-supplied path into its path and query parts.
@@ -84,11 +106,20 @@ Examples:
   gl api GET "/projects/123/issues?state=opened"
   gl api POST /projects/123/labels -f name=bug -f color=#ff0000
   gl api PUT /projects/123/merge_requests/5 --data '{"title":"New"}'
+  gl api POST /projects/123/merge_requests/5/discussions --data-file note.json
+
+Nested objects (an inline note's "position") must go through --data/--data-file:
+-f sends a form body and GitLab drops bracketed keys without failing.
 
 GraphQL escape hatch:
   gl api graphql -f query='{ currentUser { name } }'`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		data, err := dataArg(apiData, apiDataFile)
+		if err != nil {
+			return err
+		}
+
 		// GraphQL form: `gl api graphql -f query=...`
 		if strings.EqualFold(args[0], "graphql") {
 			fields, err := parseFields(apiFields)
@@ -96,8 +127,8 @@ GraphQL escape hatch:
 				return err
 			}
 			query := fields.Get("query")
-			if query == "" && apiData != "" {
-				query = apiData
+			if query == "" && data != "" {
+				query = data
 			}
 			if query == "" {
 				return fmt.Errorf("graphql requires -f query=... or --data")
@@ -123,10 +154,10 @@ GraphQL escape hatch:
 		var body []byte
 		var contentType string
 		switch {
-		case apiData != "" && len(fields) > 0:
-			return fmt.Errorf("use either -f or --data, not both")
-		case apiData != "":
-			body = []byte(apiData)
+		case data != "" && len(fields) > 0:
+			return fmt.Errorf("use either -f or --data/--data-file, not both")
+		case data != "":
+			body = []byte(data)
 			contentType = "application/json"
 		case len(fields) > 0 && method == "GET":
 			for k, vs := range fields {
@@ -135,6 +166,9 @@ GraphQL escape hatch:
 				}
 			}
 		case len(fields) > 0:
+			if err := checkFormFields(fields); err != nil {
+				return err
+			}
 			body = []byte(fields.Encode())
 			contentType = "application/x-www-form-urlencoded"
 		}
@@ -161,6 +195,7 @@ GraphQL escape hatch:
 func init() {
 	apiCmd.Flags().StringArrayVarP(&apiFields, "field", "f", nil, "form field key=value (repeatable)")
 	apiCmd.Flags().StringVar(&apiData, "data", "", "raw JSON request body")
+	apiCmd.Flags().StringVar(&apiDataFile, "data-file", "", "read the raw JSON request body from a file (- for stdin)")
 	apiCmd.Flags().BoolVar(&apiPaginate, "paginate", false, "fetch all pages and merge into one array (GET only)")
 	rootCmd.AddCommand(apiCmd)
 }

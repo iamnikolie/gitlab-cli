@@ -78,3 +78,28 @@ func TestFlattenDiscussions_IncludeSystem(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rows, 1)
 }
+
+func TestFlattenDiscussions_CarriesAnchor(t *testing.T) {
+	data := []byte(`[{"id":"abc","notes":[{"body":"off by one","type":"DiffNote",
+		"author":{"username":"alice"},
+		"position":{"new_path":"x.go","old_path":"x.go","new_line":49,"head_sha":"efe8ecdb1234"}}]}]`)
+	out, err := flattenDiscussions(data, false)
+	require.NoError(t, err)
+	rows, err := decodeArray(out)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "DiffNote", rows[0]["type"])
+	assert.Equal(t, "x.go", rows[0]["path"])
+	assert.Equal(t, "49", rows[0]["line"])
+	assert.Equal(t, "efe8ecdb", rows[0]["head_sha"])
+}
+
+func TestFlattenDiscussions_PlainNoteHasEmptyAnchor(t *testing.T) {
+	data := []byte(`[{"id":"abc","notes":[{"body":"nit","author":{"username":"alice"}}]}]`)
+	out, err := flattenDiscussions(data, false)
+	require.NoError(t, err)
+	rows, err := decodeArray(out)
+	require.NoError(t, err)
+	assert.Equal(t, "", rows[0]["path"])
+	assert.Equal(t, "", rows[0]["type"])
+}

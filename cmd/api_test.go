@@ -45,3 +45,23 @@ func TestNormalizeAPIPath(t *testing.T) {
 	assert.Equal(t, "/user", normalizeAPIPath("user"))
 	assert.Equal(t, "/user", normalizeAPIPath("/user"))
 }
+
+// A bracketed -f key is the shape that makes GitLab answer 201 while dropping
+// the field — an inline note becomes a plain comment. Refuse it loudly.
+func TestCheckFormFields_RejectsBracketedKeys(t *testing.T) {
+	v := url.Values{}
+	v.Set("body", "x")
+	v.Set("position[new_line]", "49")
+	v.Set("position[position_type]", "text")
+	err := checkFormFields(v)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "position[new_line], position[position_type]")
+	assert.Contains(t, err.Error(), "--data-file")
+}
+
+func TestCheckFormFields_AllowsPlainKeys(t *testing.T) {
+	v := url.Values{}
+	v.Set("body", "x")
+	v.Set("labels", "bug,urgent")
+	require.NoError(t, checkFormFields(v))
+}

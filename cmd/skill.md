@@ -36,7 +36,7 @@ Without `--project`, project-scoped commands exit 1 with a hint.
 |---|---|
 | `gl config init` | Write host + token to profile |
 | `gl config show` | Show active profile, host, base URL, token state (masked) |
-| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data` raw JSON body, `--paginate` (GET, all pages) |
+| `gl api <METHOD> <path>` | Raw REST v4. `-f key=val` form fields, `--data`/`--data-file` raw JSON body, `--paginate` (GET, all pages) |
 | `gl api graphql -f query=...` | GraphQL escape hatch |
 | `gl me` | Current user |
 | `gl version` | Version (also `gl --version`) |
@@ -62,7 +62,8 @@ accepted as aliases for `--source`/`--target`.
 | `gl mr approve <id\|branch>` | — |
 | `gl mr note <id\|branch> [text]` | Add a comment; `--thread` makes a resolvable thread + returns `discussion_id`; `--body-file` for long text |
 | `gl mr note-delete <id\|branch> <note-id>...` | Delete one or more comments (requires `--yes`) |
-| `gl mr discussions <id\|branch>` | List threads (`discussion_id`, resolvable/resolved, body); `--system` to include system threads |
+| `gl mr comment <id\|branch> [text]` | Inline comment on a diff line: `--path` (required), `--line` (new file) or `--old-line` (deleted line), `--body-file`; verified `DiffNote` |
+| `gl mr discussions <id\|branch>` | List threads (`discussion_id`, `type`, `path`, `line`, resolvable/resolved, body); `--system` to include system threads |
 | `gl mr reply <id\|branch> <discussion-id> [text]` | Reply into a thread; `--body-file` for long text |
 | `gl mr resolve \| unresolve <id\|branch> <discussion-id>` | Resolve / unresolve a thread |
 | `gl mr diff <id\|branch>` | Show changes (unified patch) |
@@ -185,6 +186,31 @@ gl mr view 42 --project group/repo --comments
 gl mr diff 42 --project group/repo
 ```
 
+**Comment on a line of the diff:**
+```bash
+gl mr diff 42 --project group/repo                      # find the line to comment on
+gl mr comment 42 --project group/repo \
+  --path internal/api/user.go --line 49 --body-file review.md
+gl mr comment 42 --project group/repo --path old.go --old-line 12 "why was this dropped?"
+```
+
+`gl mr comment` resolves the sha triple (`base`/`start`/`head`) from the MR and
+the old/new line pair from the diff, then **reads the created note back** and
+fails if GitLab dropped the anchor. Rules it applies for you:
+
+- added line (`+`) → `new_line` only — pass `--line`;
+- context line (unchanged) → **both** old and new — pass `--line`;
+- deleted line (`-`) → `old_line` only — pass `--old-line`.
+
+A line outside the diff is an error listing the lines that *are* commentable,
+so line numbers never have to be guessed from a local checkout. On failure the
+error carries the exact `gl mr note-delete` command to remove the stray note.
+
+Verify posted threads with `gl mr discussions 42 --project g/r`: `type` must be
+`DiffNote` (empty = a plain comment that is not anchored), and `head_sha` is the
+revision the thread was filed against — an older sha than the MR head means the
+line numbers in that thread no longer match the current file.
+
 **Work review threads:**
 ```bash
 gl mr discussions 42 --project group/repo                 # list threads + discussion_id
@@ -230,8 +256,21 @@ gl release list --project group/repo
 ```bash
 gl api GET "/projects/123/issues?state=opened"
 gl api POST /projects/123/labels -f name=bug -f color=#ff0000
+gl api POST /projects/123/merge_requests/5/discussions --data-file note.json
 gl api graphql -f query='{ currentUser { name } }'
 ```
+
+`-f` sends a form body: **nested objects do not survive it** — GitLab ignores
+bracketed keys like `position[new_line]=49` and still answers 2xx, so the
+resource is created without them. `gl api` refuses such keys; send the whole
+body as JSON via `--data-file <file>` (or `--data '{...}'`) instead. Prefer
+`--data-file` over `--data "$(cat f)"`: no command substitution, no quoting.
+
+## Errors never land on stdout
+
+An API error exits non-zero and prints to **stderr** only; stdout stays empty.
+Piping stdout into a JSON parser is safe — a failed call yields no document
+rather than an error object that parses as data. Branch on the exit code.
 
 **Output formats / debug:**
 ```bash
