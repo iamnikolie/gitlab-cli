@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
+	"github.com/iamnikolie/gitlab-cli/internal/render"
 	"github.com/spf13/cobra"
 )
 

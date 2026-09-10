@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/langgerone/gitlab-cli/internal/client"
+	"github.com/iamnikolie/gitlab-cli/internal/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
+	"github.com/iamnikolie/gitlab-cli/internal/render"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

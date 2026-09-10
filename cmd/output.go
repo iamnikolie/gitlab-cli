@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langgerone/gitlab-cli/internal/render"
+	"github.com/iamnikolie/gitlab-cli/internal/render"
 )
 
 // fieldString returns one top-level field of a JSON object as a string.

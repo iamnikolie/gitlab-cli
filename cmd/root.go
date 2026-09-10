@@ -8,13 +8,13 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/langgerone/gitlab-cli/internal/client"
-	"github.com/langgerone/gitlab-cli/internal/config"
+	"github.com/iamnikolie/gitlab-cli/internal/client"
+	"github.com/iamnikolie/gitlab-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // version is the base CLI version; buildVersion appends the VCS revision.
-const version = "0.1.0"
+var version = "0.1.0"
 
 // buildVersion returns the version plus the embedded git revision when present.
 func buildVersion() string {

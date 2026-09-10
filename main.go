@@ -1,6 +1,6 @@
 package main
 
-import "github.com/langgerone/gitlab-cli/cmd"
+import "github.com/iamnikolie/gitlab-cli/cmd"
 
 func main() {
 	cmd.Execute()

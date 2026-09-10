@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/langgerone/gitlab-cli/internal/config"
+	"github.com/iamnikolie/gitlab-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
