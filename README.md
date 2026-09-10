@@ -1,8 +1,18 @@
 # gitlab-cli (`gl`)
 
+[![CI](https://github.com/iamnikolie/gitlab-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/iamnikolie/gitlab-cli/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/iamnikolie/gitlab-cli.svg)](https://pkg.go.dev/github.com/iamnikolie/gitlab-cli)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 An agent-facing GitLab CLI. Replaces `glab` / GitLab MCP in Claude Code and
 agent workflows: the agent runs `gl <command>` from Bash and reads token-lean
 output (rendered tables/KV by default, `--json`/`--format` for machines).
+
+Works against gitlab.com and self-hosted instances alike — the host is per
+profile, so `work` on a company GitLab and `personal` on gitlab.com coexist
+without env juggling.
+
+> Unofficial, community-built tool. Not affiliated with, endorsed by, or supported by GitLab Inc.
 
 Binary name is `gl` — no PATH conflict with `glab`. Removing an existing `glab`
 is a separate manual step (e.g. `brew uninstall glab`); this project does not
@@ -10,17 +20,30 @@ touch it.
 
 ## Install
 
+**Prebuilt binary** — download the archive for your platform from
+[Releases](https://github.com/iamnikolie/gitlab-cli/releases), then:
+
 ```bash
-git clone git@github.com:langgerone/gitlab-cli.git
+tar xzf gitlab-cli_*_darwin_arm64.tar.gz
+sudo mv gl /usr/local/bin/
+```
+
+**With Go** (1.24+):
+
+```bash
+go install github.com/iamnikolie/gitlab-cli@latest
+```
+
+**From source** — `make install` symlinks the binary, so a later `make build`
+updates the installed CLI without reinstalling:
+
+```bash
+git clone https://github.com/iamnikolie/gitlab-cli.git
 cd gitlab-cli
-make install        # builds and symlinks ~/.local/bin/gl -> ./gl
+make install        # symlink → ~/.local/bin/gl
 ```
 
-Or build directly:
-
-```bash
-make build          # produces ./gl
-```
+Check what you got with `gl version`.
 
 ## Setup
 
@@ -49,6 +72,12 @@ Token/host can also come from the environment (still requires a profile name
 to be selected): `GL_TOKEN` (fallback `GITLAB_TOKEN`), `GL_HOST` (fallback
 `GITLAB_HOST`; default `gitlab.com`). `--host gitlab.company.com` overrides the
 profile host ad-hoc (highest precedence).
+
+The profile file is mode 0600 and holds the personal access token in plain text
+— the same posture as `~/.aws/credentials` or a `.netrc`. Scope the token to
+what you actually need (`read_api` alone is enough for every read command) and
+keep it out of repositories and dotfile backups. Revoke a leaked one under
+GitLab → Preferences → Access tokens.
 
 ## Project context
 
@@ -139,3 +168,25 @@ Commands taking `<id|branch>` accept an MR iid or a source branch name.
   `--description-file <path>` / `--body-file <path>` (use `-` for stdin),
   avoiding shell-quoting. Mutually exclusive with the inline form. `gl api`
   takes `--data-file <path>` for the same reason.
+
+## Development
+
+```bash
+make test          # go test ./...
+make vet           # go vet ./...
+make fmt           # gofmt -w .
+make build         # build ./gl, version stamped from git describe
+make install       # symlink to ~/.local/bin
+```
+
+CI runs gofmt, `go vet` and `go test -race` on Linux and macOS for every push
+and pull request. Tests never touch the network — they exercise pure helpers
+(URL encoding, field flattening, diff-position math, config resolution).
+
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+[MIT](LICENSE) © Mykola Klitovchenko

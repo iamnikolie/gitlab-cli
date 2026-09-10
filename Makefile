@@ -1,10 +1,16 @@
-.PHONY: build install uninstall test vet
+.PHONY: build install uninstall test vet fmt clean
 
 BIN := gl
 PREFIX ?= $(HOME)/.local
+PKG := github.com/iamnikolie/gitlab-cli/cmd
+
+# Version stamped into the binary. Falls back to the short commit when the tree
+# has no tag yet, so a local build is still identifiable.
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X $(PKG).version=$(VERSION)
 
 build:
-	go build -o $(BIN) .
+	go build -ldflags "$(LDFLAGS)" -o $(BIN) .
 
 install: build
 	mkdir -p $(PREFIX)/bin
@@ -18,3 +24,10 @@ test:
 
 vet:
 	go vet ./...
+
+fmt:
+	gofmt -l -w .
+
+clean:
+	rm -f $(BIN)
+	rm -rf dist
